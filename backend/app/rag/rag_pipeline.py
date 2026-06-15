@@ -1,7 +1,7 @@
 from app.rag.document_loader import DocumentLoader
 from app.rag.chunker import TextChunker
 from app.rag.vector_store import CampusVectorStore
-from app.services.llm_service import LLMService  # <-- Add this import
+from app.services.llm_service import LLMService 
 
 class RAGPipeline:
     @staticmethod
@@ -30,6 +30,9 @@ class RAGPipeline:
         except Exception as e:
             return {"filename": filename, "status": "Failed", "detail": str(e)}
 
+    # =========================================================================
+    # VERIFY THIS METHOD RIGOROUSLY IN YOUR FILE:
+    # =========================================================================
     @staticmethod
     def query_knowledge_base(user_query: str) -> dict:
         """
@@ -52,8 +55,15 @@ class RAGPipeline:
             # 2. Combine the texts into a unified structural context window prompt block
             combined_context = "\n\n".join([f"--- Context Segment ---\n{chunk['text']}" for chunk in matched_chunks])
             
-            # 3. Call our brand-new Claude text synthesizer service layer!
+            # 3. Call our Claude text synthesizer service layer!
             ai_answer = LLMService.synthesize_answer(user_query, combined_context)
+            
+            # CRITICAL CHECK: If the AI service returns an operational error or billing apology,
+            # drop the confidence score to 0.0 to force LangGraph to escalate the query.
+            if "We apologize" in ai_answer or "interruption occurred" in ai_answer:
+                confidence = 0.0
+            else:
+                confidence = 0.95
             
             # 4. Filter out unique source references to ensure clean UI citation maps
             unique_sources = []
@@ -71,7 +81,7 @@ class RAGPipeline:
             return {
                 "answer": ai_answer,
                 "sources": unique_sources,
-                "confidence_score": 0.95
+                "confidence_score": confidence
             }
             
         except Exception as e:

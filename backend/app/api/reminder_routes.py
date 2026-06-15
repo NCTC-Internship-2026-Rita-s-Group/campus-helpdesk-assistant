@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.schemas import APIResponse, ReminderCreate
 from app.services.database_services import DBService
+from typing import List
 
 router = APIRouter()
 
@@ -27,3 +28,25 @@ def record_student_reminder(reminder_in: ReminderCreate, db: Session = Depends(g
             status_code=500,
             detail=f"Failed to set reminder record: {str(e)}"
         )
+
+@router.get("/{student_email}", response_model=APIResponse[List[dict]])
+def get_active_student_reminders(student_email: str, db: Session = Depends(get_db)):
+    """
+    Retrieve all scheduled dashboard reminders for a specific student email profile.
+    """
+    reminders = DBService.get_reminders_by_student(db, student_email=student_email)
+    
+    formatted_reminders = [
+        {
+            "reminder_id": r.reminder_id,
+            "reminder_text": r.reminder_text,
+            "reminder_date": r.reminder_date,
+            "status": r.status
+        } for r in reminders
+    ]
+    
+    return APIResponse(
+        success=True,
+        message=f"Successfully compiled {len(formatted_reminders)} active profile reminders.",
+        data=formatted_reminders
+    )

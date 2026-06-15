@@ -47,12 +47,45 @@ def query_intake_node(state: AgentState) -> Dict[str, Any]:
 # =========================================================================
 def rag_answer_agent_node(state: AgentState) -> Dict[str, Any]:
     print("[LANGGRAPH] Node 2: Routing to RAG Answer Agent for Document Semantic Search...")
+    
+    # 1. Trigger the vector search and AI synthesis pipeline
     rag_result = RAGPipeline.query_knowledge_base(state["user_message"])
+    
+    # 2. SELF-HEALING CHECK: If the RAG pipeline flagged an API crash or credit issue
+    if rag_result.get("confidence_score", 0.95) == 0.0:
+        print("[LANGGRAPH RAG NODE] External LLM failure caught. Auto-writing to Escalations Database Table...")
+        
+        db = SessionLocal()
+        try:
+            # Commit a live tracking row directly to the SQLite escalations table
+            new_esc = DBService.create_escalation(
+                db=db,
+                student_email="student.helpdesk@amity.ranchi.edu",
+                user_message=state["user_message"],
+                reason="RAG operational exception or Anthropic API credit exhaustion."
+            )
+            
+            # Re-write the state properties on the fly to reflect the escalation
+            return {
+                "final_answer": (
+                    f"I encountered an internal operational checkpoint while accessing our live AI models.\n\n"
+                    f"• Escalation Tracking ID: {new_esc.escalation_id}\n"
+                    f"• Status: {new_esc.status}\n\n"
+                    f"Don't worry! Your query has been safely saved and escalated directly to the Amity Ranchi helpdesk supervisors for manual review."
+                ),
+                "detected_intent": "low_confidence",
+                "selected_agent": "escalation_agent",
+                "confidence_score": 0.0,
+                "sources": [{"database": "sqlite_escalations_table", "inserted_id": new_esc.escalation_id}]
+            }
+        finally:
+            db.close()
+            
+    # 3. Standard path if the AI generation worked perfectly
     return {
         "final_answer": rag_result["answer"],
         "sources": rag_result["sources"]
     }
-
 # =========================================================================
 # NODE 3: THE NOTICE BOARD AGENT (Live Database Lookups)
 # =========================================================================
@@ -134,12 +167,27 @@ def task_action_agent_node(state: AgentState) -> Dict[str, Any]:
 # NODE 5: THE ESCALATION AGENT (The Safety Fallback)
 # =========================================================================
 def escalation_agent_node(state: AgentState) -> Dict[str, Any]:
-    print("[LANGGRAPH] Node 5: Query flagged as low confidence. Directing to Escalation Manager...")
-    answer = (
-        "I was unable to locate a definitive answer in our official university documents. "
-        "I have flagged this query and escalated it directly to the Amity Ranchi student helpdesk supervisors for review."
-    )
-    return {"final_answer": answer, "sources": []}
+    print("[LANGGRAPH] Node 5: Query flagged as low confidence. Committing row to Escalations Table...")
+    
+    db = SessionLocal()
+    try:
+        # Commit the unresolvable query directly to the SQLite escalations table
+        new_esc = DBService.create_escalation(
+            db=db,
+            student_email="student.helpdesk@amity.ranchi.edu",
+            user_message=state["user_message"],
+            reason="Low similarity confidence score returned from ChromaDB knowledge base assets."
+        )
+        
+        answer = (
+            f"I was unable to locate a definitive answer in our official university documents.\n\n"
+            f"• Escalation ID: {new_esc.escalation_id}\n"
+            f"• Status: {new_esc.status}\n\n"
+            f"I have successfully logged this query and escalated it directly to the Amity Ranchi student helpdesk supervisors for manual review."
+        )
+        return {"final_answer": answer, "sources": [{"database": "sqlite_escalations_table", "inserted_id": new_esc.escalation_id}]}
+    finally:
+        db.close()
 
 # =========================================================================
 # THE STATE CHART GRAPH ORCHESTRATION TOPOLOGY

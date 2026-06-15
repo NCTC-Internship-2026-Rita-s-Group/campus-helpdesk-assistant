@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy.orm import Session
-from app.models.db_models import TicketModel, NoticeModel, ReminderModel
+from app.models.db_models import TicketModel, NoticeModel, ReminderModel, EscalationModel
 from app.models.schemas import TicketCreate, NoticeCreate, ReminderCreate
 
 class DBService:
@@ -56,7 +56,7 @@ class DBService:
         db.commit()
         db.refresh(db_reminder)
         return db_reminder
-    
+
     @staticmethod
     def update_ticket_status(db: Session, ticket_id: str, current_status: str) -> TicketModel:
         """
@@ -71,3 +71,31 @@ class DBService:
         db.commit()
         db.refresh(db_ticket)
         return db_ticket
+
+    @staticmethod
+    def get_reminders_by_student(db: Session, student_email: str) -> list[ReminderModel]:
+        """
+        Retrieves all active scheduled reminders for a specific student profile.
+        """
+        return db.query(ReminderModel).filter(
+            ReminderModel.student_email == student_email
+        ).order_by(ReminderModel.reminder_date.asc()).all()
+
+    @staticmethod
+    def create_escalation(db: Session, student_email: str, user_message: str, reason: str) -> EscalationModel:
+        """
+        Commits a low-confidence or unresolvable query to the escalations table for manual admin review.
+        """
+        unique_id = f"ESC-{uuid.uuid4().hex[:6].upper()}"
+        
+        db_escalation = EscalationModel(
+            escalation_id=unique_id,
+            student_email=student_email,
+            user_message=user_message,
+            reason=reason,
+            status="Pending"
+        )
+        db.add(db_escalation)
+        db.commit()
+        db.refresh(db_escalation)
+        return db_escalation

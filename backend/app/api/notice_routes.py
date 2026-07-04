@@ -1,23 +1,56 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models.schemas import APIResponse, NoticeResponse
-from app.services.database_services import DBService
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from typing import List
 
-router = APIRouter()
+from app.database import get_db
+from app.models.db_models import Notice
+from app.models.schemas import NoticeCreate, NoticeResponse
 
-@router.get("/latest", response_model=APIResponse[List[NoticeResponse]])
-def get_latest_campus_notices(
-    limit: int = Query(default=5, ge=1, le=20), 
-    db: Session = Depends(get_db)
+router = APIRouter(prefix="/notices", tags=["Campus Bulletin Broadcasts"])
+
+
+@router.get("", response_model=List[NoticeResponse])
+async def fetch_all_bulletin_notices(db: AsyncSession = Depends(get_db)):
+    """
+    📥 Read Operation: Pulls all campus circulars from PostgreSQL.
+    Feeds your frontend Bulletin Board stream dynamically.
+    """
+    # Execute non-blocking selection query order by latest entry
+    result = await db.execute(select(Notice).order_by(Notice.id.desc()))
+    notices_list = result.scalars().all()
+    return notices_list
+
+
+@router.post("", response_model=NoticeResponse, status_code=status.HTTP_201_CREATED)
+async def broadcast_new_campus_notice(
+    payload: NoticeCreate, 
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Fetch the latest live notices from the Amity University Ranchi notice board database.
+    📤 Write Operation: Commits a fresh administrative announcement down to the database ledger.
     """
-    notices = DBService.get_latest_notices(db, limit=limit)
-    return APIResponse(
-        success=True,
-        message=f"Successfully retrieved the latest {len(notices)} campus notices.",
-        data=notices
+    # Map incoming validation properties cleanly to the table layer instance
+    new_notice = Notice(
+        title=payload.title,
+        category=payload.category,
+        date=payload.date,
+        excerpt=payload.excerpt,
+        content=payload.content
     )
+    
+    db.add(new_notice)
+    await db.commit()
+    await db.refresh(new_notice) # Hydrates the instance with its auto-generated database integer ID
+    return new_notice
+
+# Add this import to backend/app/api/notice_routes.py
+from app.services.security import verify_admin_clearance
+
+@router.post("", response_model=NoticeResponse, status_code=status.HTTP_201_CREATED)
+async def broadcast_new_campus_notice(
+    payload: NoticeCreate, 
+    db: AsyncSession = Depends(get_db),
+    admin_user = Depends(verify_admin_clearance) # 🔒 This route now requires a valid Admin JWT!
+):
+    ...

@@ -51,41 +51,21 @@ def rag_answer_agent_node(state: AgentState) -> Dict[str, Any]:
     # 1. Trigger the vector search and AI synthesis pipeline
     rag_result = RAGPipeline.query_knowledge_base(state["user_message"])
     
-    # 2. SELF-HEALING CHECK: If the RAG pipeline flagged an API crash or credit issue
-    if rag_result.get("confidence_score", 0.95) == 0.0:
-        print("[LANGGRAPH RAG NODE] External LLM failure caught. Auto-writing to Escalations Database Table...")
-        
-        db = SessionLocal()
-        try:
-            # Commit a live tracking row directly to the SQLite escalations table
-            new_esc = DBService.create_escalation(
-                db=db,
-                student_email="student.helpdesk@amity.ranchi.edu",
-                user_message=state["user_message"],
-                reason="RAG operational exception or Anthropic API credit exhaustion."
-            )
-            
-            # Re-write the state properties on the fly to reflect the escalation
-            return {
-                "final_answer": (
-                    f"I encountered an internal operational checkpoint while accessing our live AI models.\n\n"
-                    f"• Escalation Tracking ID: {new_esc.escalation_id}\n"
-                    f"• Status: {new_esc.status}\n\n"
-                    f"Don't worry! Your query has been safely saved and escalated directly to the Amity Ranchi helpdesk supervisors for manual review."
-                ),
-                "detected_intent": "low_confidence",
-                "selected_agent": "escalation_agent",
-                "confidence_score": 0.0,
-                "sources": [{"database": "sqlite_escalations_table", "inserted_id": new_esc.escalation_id}]
-            }
-        finally:
-            db.close()
+    # 2. DYNAMIC ROUTING CHECK: If the pipeline returned an error or low confidence score
+    if rag_result.get("confidence_score", 1.0) == 0.0:
+        print("[LANGGRAPH RAG NODE] Low confidence or API failure detected. Preparing route to Escalation Agent...")
+        return {
+            "confidence_score": 0.0,
+            "selected_agent": "escalation_agent"
+        }
             
     # 3. Standard path if the AI generation worked perfectly
     return {
         "final_answer": rag_result["answer"],
-        "sources": rag_result["sources"]
+        "sources": rag_result["sources"],
+        "confidence_score": rag_result.get("confidence_score", 0.95)
     }
+
 # =========================================================================
 # NODE 3: THE NOTICE BOARD AGENT (Live Database Lookups)
 # =========================================================================
@@ -108,23 +88,18 @@ def notice_agent_node(state: AgentState) -> Dict[str, Any]:
 # =========================================================================
 def task_action_agent_node(state: AgentState) -> Dict[str, Any]:
     print(f"[LANGGRAPH] Node 4: Task Action Agent intercepting transaction for: {state['detected_intent']}")
-    
-    # Open a live, standalone connection stream to your SQLite database
     db = SessionLocal()
     sources = []
     
     try:
-        # TRANSACTION TYPE A: AUTOMATED HELPDESK TICKET REGISTRATION
         if state["detected_intent"] == "create_ticket":
-            # Extract clean descriptions from the incoming message string
             ticket_payload = TicketCreate(
-                student_name="Prakash Kumar Prajapati", # Simulated authenticated profile session data
+                student_name="Prakash Kumar Prajapati", 
                 student_email="student.helpdesk@amity.ranchi.edu",
                 category="General Grievance",
                 description=state["user_message"]
             )
             
-            # Call your production database service to insert the row
             new_ticket = DBService.create_ticket(db, ticket_payload)
             
             answer = (
@@ -136,12 +111,11 @@ def task_action_agent_node(state: AgentState) -> Dict[str, Any]:
             )
             sources.append({"database": "sqlite_tickets_table", "inserted_id": new_ticket.ticket_id})
 
-        # TRANSACTION TYPE B: AUTOMATED STUDENT REMINDER SETTING
         elif state["detected_intent"] == "create_reminder":
             reminder_payload = ReminderCreate(
                 student_email="student.helpdesk@amity.ranchi.edu",
                 reminder_text=state["user_message"],
-                reminder_date="2026-06-19" # Automatically scheduled upcoming checkpoint date
+                reminder_date="2026-06-19" 
             )
             
             new_reminder = DBService.create_reminder(db, reminder_payload)
@@ -167,25 +141,28 @@ def task_action_agent_node(state: AgentState) -> Dict[str, Any]:
 # NODE 5: THE ESCALATION AGENT (The Safety Fallback)
 # =========================================================================
 def escalation_agent_node(state: AgentState) -> Dict[str, Any]:
-    print("[LANGGRAPH] Node 5: Query flagged as low confidence. Committing row to Escalations Table...")
+    print("[LANGGRAPH] Node 5: Query flagged as low confidence or system error. Committing row to Escalations Table...")
     
     db = SessionLocal()
     try:
-        # Commit the unresolvable query directly to the SQLite escalations table
         new_esc = DBService.create_escalation(
             db=db,
             student_email="student.helpdesk@amity.ranchi.edu",
             user_message=state["user_message"],
-            reason="Low similarity confidence score returned from ChromaDB knowledge base assets."
+            reason="Low similarity confidence score or operational exception inside the core AI model engines."
         )
         
         answer = (
             f"I was unable to locate a definitive answer in our official university documents.\n\n"
             f"• Escalation ID: {new_esc.escalation_id}\n"
             f"• Status: {new_esc.status}\n\n"
-            f"I have successfully logged this query and escalated it directly to the Amity Ranchi student helpdesk supervisors for manual review."
+            f"Don't worry! Your query has been successfully logged and escalated directly to the Amity Ranchi student helpdesk supervisors for manual review."
         )
-        return {"final_answer": answer, "sources": [{"database": "sqlite_escalations_table", "inserted_id": new_esc.escalation_id}]}
+        return {
+            "final_answer": answer, 
+            "sources": [{"database": "sqlite_escalations_table", "inserted_id": new_esc.escalation_id}],
+            "detected_intent": "low_confidence"
+        }
     finally:
         db.close()
 
@@ -202,11 +179,13 @@ workflow.add_node("escalation_agent", escalation_agent_node)
 
 workflow.set_entry_point("query_intake")
 
+# Reusable Router Logic that assesses state boundaries dynamically
 def router_decision_edge(state: AgentState) -> str:
-    if state["confidence_score"] < 0.60:
+    if state["confidence_score"] < 0.60 or state["selected_agent"] == "escalation_agent":
         return "escalation_agent"
     return state["selected_agent"]
 
+# Router Edge 1: Routes traffic from the initial Intake block
 workflow.add_conditional_edges(
     "query_intake",
     router_decision_edge,
@@ -218,7 +197,16 @@ workflow.add_conditional_edges(
     }
 )
 
-workflow.add_edge("rag_answer_agent", END)
+# Router Edge 2: Evaluates the output of the RAG block before finishing
+workflow.add_conditional_edges(
+    "rag_answer_agent",
+    router_decision_edge,
+    {
+        "rag_answer_agent": END, # If confidence remains high, exit safely with the answer
+        "escalation_agent": "escalation_agent" # If confidence dropped to 0.0, divert straight to Node 5!
+    }
+)
+
 workflow.add_edge("notice_agent", END)
 workflow.add_edge("task_action_agent", END)
 workflow.add_edge("escalation_agent", END)

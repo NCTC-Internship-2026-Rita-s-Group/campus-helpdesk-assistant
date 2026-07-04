@@ -1,93 +1,106 @@
 import os
+from typing import List, Dict, Any
 import chromadb
 from chromadb.utils import embedding_functions
+from app.config import settings
 
-import os
-import chromadb
-from chromadb.config import Settings  # <-- Add this import
-from chromadb.utils import embedding_functions
-
-class CampusVectorStore:
+class VectorStoreEngine:
+    """
+    🧠 Enterprise Hybrid Vector Storage Core
+    Dynamically switches between a local persistent file layer for fast local debugging
+    and a hosted HTTP client cluster connection for serverless cloud infrastructure.
+    """
     def __init__(self):
-        # Establish the absolute storage path matching our global project architecture
-        self.persist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/vector_db"))
-        os.makedirs(self.persist_dir, exist_ok=True)
-
-        # SILENCE TELEMETRY: Disable anonymous usage logging to clean up terminal streams
-        self.chroma_client = chromadb.PersistentClient(
-            path=self.persist_dir,
-            settings=Settings(anonymized_telemetry=False)  # <-- Add this setting
+        # 1. Instantiate the industry standard local embedding framework
+        # This matches your server startup telemetry footprint logs perfectly
+        self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
         )
         
-        # Configure local default embedding utility function (384-dimensional space)
-        self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
+        # 2. Check if a dedicated cloud vector cluster endpoint address is provided
+        # e.g., CHROMA_SERVER_HOST="https://your-hosted-chroma-instance.com"
+        self.cloud_host = os.getenv("CHROMA_SERVER_HOST")
+        self.cloud_auth_token = os.getenv("CHROMA_AUTH_TOKEN")
         
-        # Connect to or safely initialize our unified campus knowledge base collection
-        self.collection = self.chroma_client.get_or_create_collection(
-            name="campus_knowledge",
-            embedding_function=self.embedding_fn
-        )
-    
-    # ... leave the rest of the index_processed_chunks and search_similar_chunks methods exactly as they are!
-    def index_processed_chunks(self, chunks: list[dict]) -> bool:
-        """
-        Takes overlapping text paragraph structures, extracts string contents, 
-        maps individual unique IDs, and saves them straight into ChromaDB storage vectors.
-        """
-        if not chunks:
-            print("[VECTOR DB] Warning: Received empty chunk array for indexing.")
-            return False
-
-        documents = []
-        metadatas = []
-        ids = []
-
-        for idx, chunk in enumerate(chunks):
-            documents.append(chunk["text"])
-            metadatas.append(chunk["metadata"])
-            ids.append(f"chk_{chunk['metadata']['source']}_{chunk['metadata']['page']}_{idx}")
-
-        try:
-            self.collection.upsert(
-                documents=documents,
-                metadatas=metadatas,
-                ids=ids
+        if self.cloud_host:
+            print(f"🌐 [VECTOR CORE] Initializing secure cloud client link target: {self.cloud_host}")
+            
+            headers = {}
+            if self.cloud_auth_token:
+                headers = {"Authorization": f"Bearer {self.cloud_auth_token}"}
+                
+            # Establish direct stateless HTTP socket lines to your cloud cluster
+            self.client = chromadb.HttpClient(
+                host=self.cloud_host,
+                headers=headers
             )
-            print(f"[VECTOR DB] Successfully upserted {len(documents)} context fragments into ChromaDB storage.")
-            return True
-        except Exception as e:
-            print(f"[VECTOR DB ERROR] Bulk document upsert failure: {str(e)}")
-            return False
+        else:
+            # Safe local developer workspace tracking path fallback setup
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            local_storage_path = os.path.abspath(os.path.join(base_dir, "../../../data/vector_db"))
+            os.makedirs(local_storage_path, exist_ok=True)
+            
+            print(f"💾 [VECTOR CORE] Initializing local development file array block: {local_storage_path}")
+            self.client = chromadb.PersistentClient(path=local_storage_path)
 
-    def search_similar_chunks(self, query_text: str, n_results: int = 3) -> list[dict]:
+        # 3. Mount or acquire our unified helpdesk index reference matrix collection
+        self.collection = self.client.get_or_create_collection(
+            name="campus_knowledge_base",
+            embedding_function=self.embedding_function,
+            metadata={"hnsw:space": "cosine"} # Enforces high-precision angular distance search
+        )
+
+    async def ingest_document_chunks(self, chunks: List[str], metadatas: List[Dict[str, Any]], source_name: str):
         """
-        Queries ChromaDB using vector similarity to retrieve the top-k most 
-        relevant context paragraph fragments with metadata tracking coordinates.
+        Writes high-density text layout segments directly into the vector database index.
+        """
+        try:
+            if not chunks:
+                return
+                
+            # Formulate robust unique document identifiers for every sliced index block
+            generated_ids = [f"{source_name}_chunk_{idx}" for idx in range(len(chunks))]
+            
+            self.collection.add(
+                documents=chunks,
+                metadatas=metadatas,
+                ids=generated_ids
+            )
+            print(f"📦 [VECTOR STORE] Successfully synchronized {len(chunks)} text nodes inside the cluster index.")
+            
+        except Exception as write_fault:
+            print(f"❌ [VECTOR STORE] Ingestion matrix commit error: {str(write_fault)}")
+            raise write_fault
+
+    def query_semantic_context(self, search_query: str, match_limit: int = 4) -> List[Dict[str, Any]]:
+        """
+        Executes an vector search against matching text weights inside the core collection.
+        Returns a structured array of cited context snippets.
         """
         try:
             results = self.collection.query(
-                query_texts=[query_text],
-                n_results=n_results
+                query_texts=[search_query],
+                n_results=match_limit
             )
             
-            formatted_chunks = []
-            if not results or not results["documents"] or not results["documents"][0]:
-                return formatted_chunks
+            formatted_contexts = []
+            if results and results.get("documents") and len(results["documents"]) > 0:
+                documents = results["documents"][0]
+                metadatas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(documents)
+                distances = results["distances"][0] if results.get("distances") else [0.0] * len(documents)
                 
-            # ChromaDB returns nested batch lists; extract the first query's data
-            matched_documents = results["documents"][0]
-            matched_metadatas = results["metadatas"][0]
+                for idx in range(len(documents)):
+                    formatted_contexts.append({
+                        "text": documents[idx],
+                        "metadata": metadatas[idx],
+                        "distance": distances[idx]
+                    })
+                    
+            return formatted_contexts
             
-            for i in range(len(matched_documents)):
-                formatted_chunks.append({
-                    "text": matched_documents[i],
-                    "source": matched_metadatas[i].get("source", "Unknown Document"),
-                    "page": matched_metadatas[i].get("page", 0)
-                })
-                
-            print(f"[VECTOR DB SEARCH] Located {len(formatted_chunks)} relevant matches matching query text.")
-            return formatted_chunks
-            
-        except Exception as e:
-            print(f"[VECTOR DB QUERY CRASH] Similarity search failed: {str(e)}")
+        except Exception as query_fault:
+            print(f"⚠️ [VECTOR STORE] Semantic lookup bypass encountered: {str(query_fault)}")
             return []
+
+# Unified singleton vector memory engine handle
+vector_memory = VectorStoreEngine()

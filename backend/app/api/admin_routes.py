@@ -1,52 +1,88 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
 from app.database import get_db
-from app.models.schemas import APIResponse, AuditLogResponse, EscalationResponse, TicketResponse, TicketUpdate
-from app.services.audit_service import AuditService
-from app.services.database_services import DBService
-from typing import List
+from app.models.db_models import User
+from app.models.schemas import UserCreate, UserResponse, UserLoginPayload, TokenResponse
+from app.services.security import security_engine, verify_admin_clearance, get_authenticated_user
 
-router = APIRouter()
+router = APIRouter(prefix="/auth", tags=["System Authentication & Access Controls"])
 
-@router.get("/audit-logs", response_model=APIResponse[List[AuditLogResponse]])
-def view_system_audit_trail(db: Session = Depends(get_db)):
-    """
-    Retrieve system execution records tracking agent selections and confidence scores.
-    """
-    logs = AuditService.get_all_logs(db)
-    return APIResponse(
-        success=True,
-        message="System audit telemetry retrieved successfully.",
-        data=logs
-    )
 
-@router.get("/escalations", response_model=APIResponse[List[EscalationResponse]])
-def view_escalated_student_queries(db: Session = Depends(get_db)):
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def onboard_new_campus_identity(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     """
-    Retrieve a list of student queries that the RAG model could not confidently resolve.
+    📝 User Onboarding Endpoint
+    Verifies data uniqueness, hashes user credentials via Bcrypt, and creates the account.
     """
-    escalations = AuditService.get_all_escalations(db)
-    return APIResponse(
-        success=True,
-        message="Active low-confidence escalations retrieved successfully.",
-        data=escalations
-    )
-
-@router.put("/tickets/{ticket_id}", response_model=APIResponse[TicketResponse])
-def administrative_modify_ticket(ticket_id: str, update_data: TicketUpdate, db: Session = Depends(get_db)):
-    """
-    Administrative control endpoint to change a student grievance ticket's tracking status flag.
-    """
-    updated_ticket = DBService.update_ticket_status(db, ticket_id=ticket_id, current_status=update_data.status)
-    
-    if not updated_ticket:
+    # Verify if identity email intersection matrix exists to prevent duplications
+    duplicate_check = await db.execute(select(User).where(User.email == payload.email))
+    if duplicate_check.scalar_one_or_none():
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Target grievance record tracking key '{ticket_id}' could not be located in database records."
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account is already registered with this institutional email address."
         )
-        
-    return APIResponse(
-        success=True,
-        message=f"Grievance record '{ticket_id}' successfully shifted to status state: {update_data.status}.",
-        data=updated_ticket
+
+    # Transform plaintext credentials safely down into a Bcrypt string hash
+    hashed_pass_string = security_engine.compute_password_hash(payload.password)
+
+    new_user = User(
+        email=payload.email,
+        hashed_password=hashed_pass_string,
+        name=payload.name,
+        role=payload.role,
+        is_active=True
     )
+
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return new_user
+
+
+@router.post("/login", response_model=TokenResponse)
+async def authenticate_user_session(payload: UserLoginPayload, db: AsyncSession = Depends(get_db)):
+    """
+    🔑 User Authentication Session Gateway
+    Validates Bcrypt credentials and yields a signed 7-day cryptographic JWT bearer token matrix.
+    """
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user_instance = result.scalar_one_or_none()
+
+    # Unified general failure error layout preventing username/email harvesting exposure vectors
+    auth_failure_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Incorrect institutional email address or access password criteria.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    if not user_instance or not user_instance.is_active:
+        raise auth_failure_exception
+
+    # Execute password verification match checks
+    is_valid_match = security_engine.verify_password(payload.password, user_instance.hashed_password)
+    if not is_valid_match:
+        raise auth_failure_exception
+
+    # Generate cryptographic JWT authentication string token payload
+    signed_token = security_engine.create_access_token(
+        user_id=user_instance.id,
+        email=user_instance.email,
+        role=user_instance.role
+    )
+
+    return {
+        "access_token": signed_token,
+        "token_type": "bearer",
+        "user": user_instance
+    }
+
+
+@router.get("/me", response_model=UserResponse)
+async def fetch_current_session_profile(current_user: User = Depends(get_authenticated_user)):
+    """
+    🔍 Token Verification Helper Endpoint
+    Allows the frontend interface to instantly verify token validity and retrieve user details upon reload.
+    """
+    return current_user

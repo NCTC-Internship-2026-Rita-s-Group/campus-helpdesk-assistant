@@ -1,19 +1,31 @@
-# Virtual Environment
+# 🐍 Python Virtual Environment & Runtime Binaries
 venv/
 .venv/
-
-# Python caching
+env/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
 
-# Local databases and uploads (do not push raw student uploads to git)
-backend/data/vector_db/
-backend/data/uploads/
+# 🗄️ Asynchronous Databases & Persistent State Vaults
 *.db
 *.sqlite3
+backend/campus_helpdesk.db
+data/vector_db/
+data/uploaded_files/
 
-# Environment configuration
+# ⚛️ JavaScript Dependency Directories & Build Artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.tanstack/
+frontend/routeTree.gen.ts
+
+# 🔒 Infrastructure Credentials & Environment Variables
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+firebase-service-account.json
+backend/app/config/firebase-service-account.json

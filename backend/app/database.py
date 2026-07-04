@@ -1,37 +1,50 @@
-import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from typing import AsyncGenerator
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import declarative_base
 from app.config import settings
 
-db_url = settings.DATABASE_URL
+# ⚙️ Environment-Aware Engine Initialization
+if settings.DATABASE_URL.startswith("sqlite"):
+    # 🪶 Local Lightweight Async SQLite Engine Config
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=False
+    )
+else:
+    # 🚀 High-Capacity Production PostgreSQL Config (Supabase/Render)
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=False,
+        pool_size=20,             # Maintains 20 continuous connections alive
+        max_overflow=10,          # Scales up dynamically during peak traffic
+        pool_pre_ping=True,       # Recycles dropped connection paths safely
+        connect_args={"ssl": True} # Enforces encrypted data transfers natively
+    )
 
-# Robust Fix: If using SQLite, convert any relative path to a deterministic absolute path
-if db_url.startswith("sqlite:///"):
-    if "./" in db_url:
-        # Extract the database filename (e.g., campus_helpdesk.db)
-        db_filename = db_url.split("/")[-1]
-        
-        # Calculate the absolute path to backend/data/ relative to this file's location
-        # os.path.dirname(__file__) points to backend/app/, so '..' moves up to backend/
-        base_data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
-        
-        # Combine them cleanly and flip Windows backslashes to forward slashes for the URL standard
-        full_db_path = os.path.join(base_data_dir, db_filename).replace("\\", "/")
-        db_url = f"sqlite:///{full_db_path}"
+# Operational Asynchronous Session Factory bound to the active engine layer
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False
+)
 
-# For SQLite, 'check_same_thread' must be False to allow async execution
-connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
-
-# Create the engine with our absolute database URL
-engine = create_engine(db_url, connect_args=connect_args)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
+# Master declarative inheritance class mapping schemas inside backend/app/models/
 Base = declarative_base()
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Input Parameter Injection Factory (Dependency)
+    Ensures every active API endpoint path runs on an isolated transaction thread,
+    guaranteeing automated rollbacks on failures and clean closing lifecycles.
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()

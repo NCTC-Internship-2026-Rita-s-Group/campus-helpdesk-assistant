@@ -1,6 +1,7 @@
 import os
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
 class Settings(BaseSettings):
     """
@@ -13,7 +14,6 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"  # Matches the multi-prefix target routing layout safely
 
     # 🗃️ Relational Database Connection Matrix
-    # Overridden automatically by your local .env configuration parameters
     DATABASE_URL: str = Field(
         default="postgresql+asyncpg://postgres:postgres@localhost:5432/amity_helpdesk",
         validation_alias="DATABASE_URL"
@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "llama3-70b-8192"  # Standard high-capacity token execution target
 
     # 📁 Firebase Admin Cloud Storage Bucket Configuration Registry
-    # 🟢 FIXED: Updated hardcoded fallback string default value to match your verified console signature (.appspot.com)
     FIREBASE_STORAGE_BUCKET: str = Field(
         default="amity-campus-helpdesk.appspot.com",
         validation_alias="FIREBASE_STORAGE_BUCKET"
@@ -46,6 +45,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8080",
         "http://localhost:5173",  # Vite default execution ports
     ]
+
+    # 👑 FIXED: Explicitly register SMTP parameters to prevent Pydantic extra key omissions
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 465
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
 
     # 📁 Reads settings from an isolated local environment mapping file (.env)
     model_config = SettingsConfigDict(

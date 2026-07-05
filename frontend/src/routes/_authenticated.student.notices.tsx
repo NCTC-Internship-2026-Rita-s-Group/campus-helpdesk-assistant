@@ -8,6 +8,7 @@ import {
   Loader2,
   BookOpen,
   ArrowRight,
+  Sparkles,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiClient, Notice } from "@/lib/api";
@@ -43,9 +44,21 @@ function StudentNoticesComponent() {
     async function fetchCampusAnnouncements() {
       try {
         const data = await apiClient.getNotices();
-        setNotices(data);
-        if (data && data.length > 0) {
-          setSelectedNotice(data[0]); // Default focus on the latest official declaration
+
+        // 🔄 PRODUCTION SCALE SORT: Ensure newly broadcasted items always rank at the top
+        const sortedData = [...data].sort((a, b) => {
+          const timeA = new Date(
+            a.date || (a as any).created_at || (a as any).uploaded_at || 0,
+          ).getTime();
+          const timeB = new Date(
+            b.date || (b as any).created_at || (b as any).uploaded_at || 0,
+          ).getTime();
+          return timeB - timeA;
+        });
+
+        setNotices(sortedData);
+        if (sortedData.length > 0) {
+          setSelectedNotice(sortedData[0]); // Default focus onto the freshest notification node
         }
       } catch (err) {
         console.error("Failed connecting to circular announcement nodes:", err);
@@ -58,17 +71,23 @@ function StudentNoticesComponent() {
 
   // Filter Pipeline: Handles real-time search queries and category tags simultaneously
   const filteredNotices = notices.filter((notice) => {
+    const categoryText = notice.category || "Admin";
     const matchesCategory =
-      activeCategory === "All" || notice.category.toLowerCase() === activeCategory.toLowerCase();
+      activeCategory === "All" || categoryText.toLowerCase() === activeCategory.toLowerCase();
+
+    const titleText = notice.title || "";
+    const contentText = notice.content || "";
     const matchesSearch =
-      notice.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      notice.content.toLowerCase().includes(searchQuery.toLowerCase());
+      titleText.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      contentText.toLowerCase().includes(searchQuery.toLowerCase());
+
     return matchesCategory && matchesSearch;
   });
 
   // 🎨 Contextual Production Color Matrix Mapper
-  const getCategoryColor = (category: string) => {
-    switch (category.toLowerCase()) {
+  const getCategoryColor = (category: string | undefined | null) => {
+    const cleanCategory = category ? category.toLowerCase() : "admin";
+    switch (cleanCategory) {
       case "academics":
         return "text-blue-400 bg-blue-500/10 border-blue-500/20";
       case "examinations":
@@ -89,7 +108,7 @@ function StudentNoticesComponent() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] w-full px-4 py-6 text-white sm:px-6 lg:px-8">
+    <div className="min-h-[calc(100vh-5rem)] w-full px-4 py-6 text-white sm:px-6 lg:px-8 bg-[#020617]">
       <div className="mx-auto max-w-7xl">
         {/* Workspace Title Header Section */}
         <div className="mb-6 border-b border-white/10 pb-5 text-left">
@@ -161,51 +180,65 @@ function StudentNoticesComponent() {
         ) : (
           <div className="grid gap-6 lg:grid-cols-12 items-start">
             {/* LEFT COLUMN: Broadcast Circular Cards Stream (5 Columns) */}
-            {/* 🛡️ FIX: Applied overflow-x-hidden paired with strict padding buffers (px-3 py-2) to fully protect edges */}
             <div className="space-y-4 lg:col-span-5 max-h-[calc(100vh-19rem)] overflow-y-auto overflow-x-hidden px-3 py-2 pb-4 layout-scroll-container">
-              {filteredNotices.map((notice) => (
-                <div
-                  key={notice.id}
-                  onClick={() => setSelectedNotice(notice)}
-                  className={`glass-panel flex flex-col gap-3 rounded-2xl border p-5 transition-all duration-300 ease-out cursor-pointer text-left select-none transform origin-center ${
-                    selectedNotice?.id === notice.id
-                      ? "bg-[#002266]/90 border-blue-500/50 shadow-[0_0_25px_rgba(59,130,246,0.15)] scale-[1.025] ring-1 ring-blue-400/20"
-                      : "bg-[#001A4D]/25 border-white/5 hover:border-white/10 hover:bg-[#001A4D]/40 scale-100 shadow-none"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded border font-mono ${getCategoryColor(notice.category)}`}
-                    >
-                      {notice.category}
-                    </span>
-                    <span className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
-                      <Calendar className="h-3 w-3" />
-                      {notice.date}
-                    </span>
-                  </div>
+              {filteredNotices.map((notice) => {
+                // 👑 DEFENSIVE KEY MAP: Formats dates dynamically from any database timestamp variant
+                const displayDate =
+                  notice.date ||
+                  (notice as any).uploaded_at ||
+                  (notice as any).created_at ||
+                  "Recent";
+                // 👑 AUTO-EXCERPT SUMMARY: Extracts snippet cleanly if the custom excerpt isn't present in the table row
+                const displayExcerpt =
+                  notice.excerpt ||
+                  (notice.content && notice.content.length > 95
+                    ? notice.content.substring(0, 95) + "..."
+                    : notice.content);
 
-                  <div className="space-y-1">
-                    <h3
-                      className={`font-display text-base font-bold leading-snug line-clamp-2 transition-colors ${
-                        selectedNotice?.id === notice.id ? "text-white" : "text-slate-100"
-                      }`}
-                    >
-                      {notice.title}
-                    </h3>
-                    <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                      {notice.excerpt}
-                    </p>
-                  </div>
+                return (
+                  <div
+                    key={notice.id}
+                    onClick={() => setSelectedNotice(notice)}
+                    className={`glass-panel flex flex-col gap-3 rounded-2xl border p-5 transition-all duration-300 ease-out cursor-pointer text-left select-none transform origin-center ${
+                      selectedNotice?.id === notice.id
+                        ? "bg-[#002266]/90 border-blue-500/50 shadow-[0_0_25px_rgba(59,130,246,0.15)] scale-[1.025] ring-1 ring-blue-400/20"
+                        : "bg-[#001A4D]/25 border-white/5 hover:border-white/10 hover:bg-[#001A4D]/40 scale-100 shadow-none"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded border font-mono ${getCategoryColor(notice.category)}`}
+                      >
+                        {notice.category || "Admin"}
+                      </span>
+                      <span className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
+                        <Calendar className="h-3 w-3" />
+                        {displayDate}
+                      </span>
+                    </div>
 
-                  <div className="flex items-center justify-end text-[11px] font-bold text-blue-400 pt-2 border-t border-white/5 group">
-                    <span className="flex items-center gap-1 group-hover:text-blue-300 transition-colors">
-                      Expand Full Circular
-                      <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-                    </span>
+                    <div className="space-y-1">
+                      <h3
+                        className={`font-display text-base font-bold leading-snug line-clamp-2 transition-colors ${
+                          selectedNotice?.id === notice.id ? "text-white" : "text-slate-100"
+                        }`}
+                      >
+                        {notice.title}
+                      </h3>
+                      <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                        {displayExcerpt}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-end text-[11px] font-bold text-blue-400 pt-2 border-t border-white/5 group">
+                      <span className="flex items-center gap-1 group-hover:text-blue-300 transition-colors">
+                        Expand Full Circular
+                        <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* RIGHT COLUMN: Interactive Deep Reading Document Vault Container (7 Columns) */}
@@ -218,11 +251,12 @@ function StudentNoticesComponent() {
                       <span
                         className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded border font-mono ${getCategoryColor(selectedNotice.category)}`}
                       >
-                        {selectedNotice.category}
+                        {selectedNotice.category || "Admin"}
                       </span>
                       <span className="flex items-center gap-1 text-xs text-slate-400 font-medium">
                         <Calendar className="h-3.5 w-3.5" />
-                        Published Timeline: {selectedNotice.date}
+                        Published Timeline:{" "}
+                        {selectedNotice.date || (selectedNotice as any).created_at || "Recent"}
                       </span>
                     </div>
                     <h2 className="font-display text-2xl font-bold text-slate-100 leading-snug">

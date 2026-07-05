@@ -27,13 +27,28 @@ function StudentTicketsComponent() {
   const [priority, setPriority] = useState("Medium");
   const [description, setDescription] = useState("");
 
-  // 🔄 Isolated Fetch Re-Trigger Conduit
+  // 🔄 Isolated Fetch Re-Trigger Conduit with Chronological Sorting Core
   const fetchUserGrievances = async (autoSelectFirst: boolean = false) => {
     try {
       const data = await apiClient.getTickets();
-      setTickets(data);
-      if (data && data.length > 0 && (autoSelectFirst || !selectedTicket)) {
-        setSelectedTicket(data[0]);
+
+      // 👑 PRODUCTION SORT: Orders incoming items so fresh tickets populate the top of the timeline
+      const sortedTickets = [...data].sort((a, b) => {
+        const timeA = new Date(a.created_date || (a as any).created_at || 0).getTime();
+        const timeB = new Date(b.created_date || (b as any).created_at || 0).getTime();
+        return timeB - timeA;
+      });
+
+      setTickets(sortedTickets);
+
+      if (sortedTickets.length > 0) {
+        if (autoSelectFirst || !selectedTicket) {
+          setSelectedTicket(sortedTickets[0]);
+        } else {
+          // Re-sync currently selected item metrics from refreshed array track
+          const refreshedMatch = sortedTickets.find((t) => t.id === selectedTicket.id);
+          if (refreshedMatch) setSelectedTicket(refreshedMatch);
+        }
       }
     } catch (err) {
       console.error("Failed fetching tickets layer:", err);
@@ -56,7 +71,6 @@ function StudentTicketsComponent() {
     setFormSubmitting(true);
 
     try {
-      // Stream package parameters over the HTTP connection layer straight to FastAPI
       const success = await apiClient.createTicket(subject, category, priority, description);
 
       if (success) {
@@ -69,7 +83,7 @@ function StudentTicketsComponent() {
         setPriority("Medium");
         setIsModalOpen(false);
 
-        // 🔄 Enterprise Refresh Loop: Pull down the official database-generated row values
+        // 🔄 Refresh table metrics to capture the database entry
         await fetchUserGrievances(true);
       }
     } catch (error) {
@@ -79,8 +93,9 @@ function StudentTicketsComponent() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
+  const getStatusBadge = (status: string | undefined | null) => {
+    const cleanStatus = status ? status.trim() : "Open";
+    switch (cleanStatus) {
       case "Open":
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 border border-rose-500/30 px-2.5 py-0.5 text-xs font-semibold text-rose-400 backdrop-blur-md shadow-[0_0_12px_rgba(244,63,94,0.1)]">
@@ -100,7 +115,11 @@ function StudentTicketsComponent() {
           </span>
         );
       default:
-        return null;
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 border border-rose-500/30 px-2.5 py-0.5 text-xs font-semibold text-rose-400 backdrop-blur-md">
+            <AlertCircle className="h-3 w-3" /> {cleanStatus}
+          </span>
+        );
     }
   };
 
@@ -147,36 +166,40 @@ function StudentTicketsComponent() {
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1 px-1 text-left">
                 Your Incidents
               </p>
-              {tickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  onClick={() => setSelectedTicket(ticket)}
-                  className={`glass-panel flex flex-col gap-3 rounded-xl border p-4 transition-all duration-300 ease-out cursor-pointer text-left select-none transform origin-center ${
-                    selectedTicket?.id === ticket.id
-                      ? "bg-[#002266]/90 border-[color:var(--gold)] shadow-md scale-[1.01]"
-                      : "bg-[#001A4D]/25 border-white/5 hover:border-white/10 hover:bg-[#001A4D]/40 scale-100 shadow-none"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs font-bold text-slate-400">{ticket.id}</span>
-                    {getStatusBadge(ticket.status)}
+              {tickets.map((ticket) => {
+                const displayDate = ticket.created_date || (ticket as any).created_at || "Recent";
+                return (
+                  <div
+                    key={ticket.id}
+                    onClick={() => setSelectedTicket(ticket)}
+                    className={`glass-panel flex flex-col gap-3 rounded-xl border p-4 transition-all duration-300 ease-out cursor-pointer text-left select-none transform origin-center ${
+                      selectedTicket?.id === ticket.id
+                        ? "bg-[#002266]/90 border-[color:var(--gold)] shadow-md scale-[1.01]"
+                        : "bg-[#001A4D]/25 border-white/5 hover:border-white/10 hover:bg-[#001A4D]/40 scale-100 shadow-none"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-bold text-slate-400">
+                        {ticket.id}
+                      </span>
+                      {getStatusBadge(ticket.status)}
+                    </div>
+                    <h3 className="font-display text-sm font-bold leading-snug line-clamp-1 text-white">
+                      {ticket.subject}
+                    </h3>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-white/5">
+                      <span
+                        className={
+                          selectedTicket?.id === ticket.id ? "text-slate-300" : "text-slate-400"
+                        }
+                      >
+                        {ticket.category}
+                      </span>
+                      <span>{displayDate}</span>
+                    </div>
                   </div>
-                  <h3 className="font-display text-sm font-bold leading-snug line-clamp-1 text-white">
-                    {ticket.subject}
-                  </h3>
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-white/5">
-                    <span
-                      className={
-                        selectedTicket?.id === ticket.id ? "text-slate-300" : "text-slate-400"
-                      }
-                    >
-                      {ticket.category}
-                    </span>
-                    {/* 🟢 FIXED: Swapped case signature from createdDate to created_date */}
-                    <span>{ticket.created_date || "Recent"}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Right Column: Detailed Timeline Tracker */}
@@ -199,7 +222,7 @@ function StudentTicketsComponent() {
                                 : "bg-slate-500/10 border-slate-500/30 text-slate-400"
                           }`}
                         >
-                          {selectedTicket.priority} Priority
+                          {selectedTicket.priority || "Medium"} Priority
                         </span>
                         {getStatusBadge(selectedTicket.status)}
                       </div>
@@ -207,11 +230,13 @@ function StudentTicketsComponent() {
                     <h2 className="font-display text-xl font-bold text-slate-100 leading-snug">
                       {selectedTicket.subject}
                     </h2>
-                    {/* 🟢 FIXED: Swapped case signature from createdDate to created_date */}
                     <p className="text-xs text-slate-400 mt-1">
                       Category:{" "}
                       <span className="text-slate-300 font-medium">{selectedTicket.category}</span>{" "}
-                      · Opened on {selectedTicket.created_date || "Recent"}
+                      · Opened on{" "}
+                      {selectedTicket.created_date ||
+                        (selectedTicket as any).created_at ||
+                        "Recent"}
                     </p>
                   </div>
 
@@ -236,10 +261,10 @@ function StudentTicketsComponent() {
                         selectedTicket.timeline.map((event, idx) => (
                           <div key={idx} className="relative">
                             <span
-                              className={`absolute -left-[27px] top-0.5 flex h-3 w-3 rounded-full border-2 ${idx === 0 ? "bg-[color:var(--gold)] border-slate-950 animate-pulse" : "bg-slate-600 border-slate-950"}`}
+                              className={`absolute -left-[27px] top-0.5 flex h-3 w-3 rounded-full border-2 ${idx === 0 && selectedTicket.status !== "Resolved" ? "bg-[color:var(--gold)] border-slate-950 animate-pulse" : "bg-slate-600 border-slate-950"}`}
                             />
                             <span className="block text-[11px] font-medium text-slate-400">
-                              {event.date}
+                              {event.date || "Audit Tag"}
                             </span>
                             <p className="text-xs text-slate-200 mt-0.5 font-medium leading-relaxed">
                               {event.message}
@@ -254,6 +279,7 @@ function StudentTicketsComponent() {
                           </span>
                           <p className="text-xs text-slate-200 mt-0.5 font-medium leading-relaxed">
                             Ticket initiated successfully inside centralized repository maps.
+                            Waiting for operational dispatch clearance.
                           </p>
                         </div>
                       )}
@@ -316,33 +342,83 @@ function StudentTicketsComponent() {
                     <Label className="text-xs text-slate-300">
                       Institutional Department Classification
                     </Label>
+                    {/* 👑 FIXED: Applied explicitly targeted bg and high-contrast text color overrides to form options to bypass browser dark theme locks */}
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="w-full rounded-xl bg-black/40 border border-white/10 p-3 text-sm text-slate-200 outline-none focus:border-[color:var(--gold)]/60 transition-colors"
+                      className="w-full rounded-xl bg-[#0a122c] border border-white/10 p-3 text-sm text-slate-100 outline-none focus:border-[color:var(--gold)]/60 transition-colors cursor-pointer font-sans shadow-inner"
                     >
-                      <option value="Finance & Accounts">Finance & Accounts</option>
-                      <option value="Academic Operations">Academic Operations</option>
-                      <option value="Examinations Desk">Examinations Desk</option>
-                      <option value="Training & Placements (TPO)">
+                      <option
+                        value="Finance & Accounts"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
+                        Finance & Accounts
+                      </option>
+                      <option
+                        value="Academic Operations"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
+                        Academic Operations
+                      </option>
+                      <option
+                        value="Examinations Desk"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
+                        Examinations Desk
+                      </option>
+                      <option
+                        value="Training & Placements (TPO)"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
                         Training & Placements (TPO)
                       </option>
-                      <option value="IT Support & Campus Wi-Fi">IT Support & Campus Wi-Fi</option>
-                      <option value="Hostel & Mess Management">Hostel & Mess Management</option>
+                      <option
+                        value="IT Support & Campus Wi-Fi"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
+                        IT Support & Campus Wi-Fi
+                      </option>
+                      <option
+                        value="Hostel & Mess Management"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
+                        Hostel & Mess Management
+                      </option>
                     </select>
                   </div>
 
                   <div className="space-y-1.5">
                     <Label className="text-xs text-slate-300">Initial Escalation Urgency</Label>
+                    {/* 👑 FIXED: Injected explicit dark solid background styling classes directly into the urgency options to keep options crisp and readable */}
                     <select
                       value={priority}
                       onChange={(e) => setPriority(e.target.value)}
-                      className="w-full rounded-xl bg-black/40 border border-white/10 p-3 text-sm text-slate-200 outline-none focus:border-[color:var(--gold)]/60 transition-colors"
+                      className="w-full rounded-xl bg-[#0a122c] border border-white/10 p-3 text-sm text-slate-100 outline-none focus:border-[color:var(--gold)]/60 transition-colors cursor-pointer font-sans shadow-inner"
                     >
-                      <option value="Low">Low — General Request</option>
-                      <option value="Medium">Medium — Standard Issue</option>
-                      <option value="High">High — Severe Bottleneck</option>
-                      <option value="Critical">Critical — Immediate Halt</option>
+                      <option
+                        value="Low"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
+                        Low — General Request
+                      </option>
+                      <option
+                        value="Medium"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
+                        Medium — Standard Issue
+                      </option>
+                      <option
+                        value="High"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
+                        High — Severe Bottleneck
+                      </option>
+                      <option
+                        value="Critical"
+                        className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                      >
+                        Critical — Immediate Halt
+                      </option>
                     </select>
                   </div>
                 </div>

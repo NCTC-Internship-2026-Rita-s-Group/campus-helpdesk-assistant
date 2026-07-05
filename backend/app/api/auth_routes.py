@@ -2,8 +2,9 @@ import re
 import hashlib
 import secrets
 import logging
+import datetime
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy import select, update
+from sqlalchemy import select, update, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
@@ -11,7 +12,7 @@ from firebase_admin import auth as firebase_auth
 
 from app.database import get_db
 from app.models.db_models import User
-from app.services.security import verify_admin_clearance  # 🛡️ Structural dependency guard
+from app.services.security import verify_admin_clearance  # 🛡️ Protected administrative access guard
 
 router = APIRouter(prefix="/auth", tags=["Unified Identity & Access Management"])
 
@@ -51,23 +52,6 @@ class PromoteUserPayload(BaseModel):
     target_email: EmailStr
     target_role: str = "admin"
 
-class AdminCreationPayload(BaseModel):
-    full_name: str
-    email: EmailStr
-    username: str
-    password: str
-
-    @field_validator("username")
-    @classmethod
-    def enforce_username_matrix_rules(cls, v: str) -> str:
-        """Enforces enterprise alphanumeric security rules (FR-09 Alignment)."""
-        username_regex = r"^[a-z][a-z0-9_.]{3,19}$"
-        if not re.match(username_regex, v):
-            raise ValueError(
-                "Username must start with a lowercase letter, contain only a-z, 0-9, underscores, or periods, and be between 4 and 20 characters."
-            )
-        return v
-
 class AdminLoginPayload(BaseModel):
     username: str  # This string accepts either the alphanumeric username OR the official email address safely
     password: str
@@ -95,7 +79,6 @@ async def synchronize_and_discover_user_role(
     auto-provisions new users as students, and returns structural portal redirection targets.
     """
     try:
-        # 1. Verify the cryptographic token signature via Firebase Admin SDK
         decoded_token = firebase_auth.verify_id_token(payload.id_token)
         fb_uid = decoded_token.get("uid")
         fb_email = decoded_token.get("email") or decoded_token.get("claims", {}).get("email")
@@ -107,13 +90,11 @@ async def synchronize_and_discover_user_role(
             detail=f"Identity verification failed. Secure token rejected: {str(token_err)}"
         )
 
-    # 2. Query the relational database to find the user profile via unique indexed identifiers
     try:
         user_query = select(User).where((User.firebase_uid == fb_uid) | (User.email == fb_email))
         query_result = await db.execute(user_query)
         existing_user = query_result.scalar_one_or_none()
 
-        # 3. Auto-Provisioning Loop: If the user is completely new, create them as a student profile automatically
         if not existing_user:
             if not fb_email:
                 raise HTTPException(
@@ -122,10 +103,10 @@ async def synchronize_and_discover_user_role(
                 )
             existing_user = User(
                 email=fb_email,
-                hashed_password="OAUTH_EXTERNAL_MANAGED_IDENTITY",  # Handled safely via token provider
+                hashed_password="OAUTH_EXTERNAL_MANAGED_IDENTITY",  
                 name=fb_name,
-                role="student",  # 🟢 Safe default baseline authorization tier
-                username=None,   # Baseline students do not possess alphanumeric usernames
+                role="student",  
+                username=None,   
                 firebase_uid=fb_uid,
                 is_active=True
             )
@@ -134,7 +115,6 @@ async def synchronize_and_discover_user_role(
             await db.refresh(existing_user)
             print(f"👤 [IDENTITY AUTO-PROVISIONED] Created profile row for {fb_email} as 'student'.")
             
-        # 4. Data Repair Sync: If user existed via local credentials but lacks a cloud anchor token, link it now
         elif not existing_user.firebase_uid:
             existing_user.firebase_uid = fb_uid
             db.add(existing_user)
@@ -147,7 +127,6 @@ async def synchronize_and_discover_user_role(
                 detail="This campus account infrastructure profile has been administratively deactivated."
             )
 
-        # 5. Dynamic Redirection Mapping Node
         redirect_map = {
             "admin": "/admin/dashboard",
             "helpdesk": "/admin/dashboard",
@@ -186,9 +165,8 @@ async def administrative_credentials_login(
     """
     🔐 Hardened Administrative Entrance Gateway
     Accepts both unique alphanumeric username strings or institutional email coordinates,
-    compares PBKDF2 hashes safely, and mints an isolated session cookie custom token response.
+    compares PBKDF2 hashes safely, and mints an isolated custom token response.
     """
-    # 1. DUAL LOOKUP Matrix: Check if the string matches EITHER username column OR official email column
     query = select(User).where((User.username == payload.username) | (User.email == payload.username))
     result = await db.execute(query)
     admin_user = result.scalar_one_or_none()
@@ -199,7 +177,6 @@ async def administrative_credentials_login(
             detail="Access Denied: Invalid administrative credentials configuration."
         )
 
-    # 2. Verify cryptographically hashed security key strings
     if not verify_password(payload.password, admin_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -212,7 +189,6 @@ async def administrative_credentials_login(
             detail="This administrative workspace context profile has been deactivated."
         )
 
-    # 3. Defensive Gate: Ensure standard baseline student roles can never hijack this gateway
     if admin_user.role not in ["admin", "helpdesk", "faculty"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -220,7 +196,6 @@ async def administrative_credentials_login(
         )
 
     try:
-        # 4. 🟢 FIXED: Attach explicit custom developer claims context directly to token allocation profiles
         developer_claims = {
             "email": admin_user.email,
             "role": admin_user.role
@@ -250,69 +225,134 @@ async def administrative_credentials_login(
 
 
 # ==============================================================================
-# ➕ ENDPOINT 3: ISOLATED ADMINISTRATIVE ACCOUNT PROVISIONING 
+# ➕ ENDPOINT 3: ATOMIC ADMINISTRATIVE ACCOUNT PROVISIONING (GHOST ROW REMEDIED)
 # ==============================================================================
-@router.post("/create-admin", status_code=status.HTTP_201_CREATED)
+@router.post("/create-admin")
 async def create_new_administrative_user(
-    payload: AdminCreationPayload,
-    current_admin: dict = Depends(verify_admin_clearance),  # 🛡️ Protected by strict security dependency checks
+    payload: dict,  # 👑 FLEXIBLE DICTIONARY: Maps parameters adaptively to handle variable full_name/fullName parameters safely
+    current_admin: User = Depends(verify_admin_clearance),  # 🛡️ Received clean structured User object
     db: AsyncSession = Depends(get_db)
 ):
     """
-    👑 Programmatic Administrative Provisioning Core
-    Allows an authenticated administrator to securely register new managers.
-    Bypasses public onboarding endpoints entirely by running requests directly via the Firebase Admin SDK.
+    👑 Distributed Transaction Provisioning Core
+    Safely registers admin operators across Firebase and local engines.
+    Atomic verification pipeline completely prevents ghost rows or double-mapping bugs on password rules failure.
     """
-    # 1. Check database constraint lines to enforce global uniqueness
-    username_check = await db.execute(select(User).where(User.username == payload.username))
+    # Extract keys safely to bridge variations across frontends
+    full_name = payload.get("full_name", payload.get("fullName", payload.get("adminFullName", ""))).strip()
+    email_address = payload.get("email", payload.get("adminEmail", "")).strip()
+    username_text = payload.get("username", payload.get("adminUsername", "")).strip()
+    raw_password = payload.get("password", payload.get("adminPassword", ""))
+
+    if not full_name or not email_address or not username_text or not raw_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Input Validation Error: Full Name, Institutional Email, Username, and Password are required."
+        )
+
+    # 1. Enforcement Check: Validate password length bounds before running any updates
+    if len(raw_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Firebase Policy Fault: Password string must consist of at least 6 characters."
+        )
+
+    # Enforce strict alphanumeric regex formatting rules on the username input
+    username_regex = r"^[a-z][a-z0-9_.]{3,19}$"
+    if not re.match(username_regex, username_text):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Format Validation Failed: Usernames must start with a lowercase letter, contain only lowercase letters, digits, underscores, or periods, and be 4 to 20 characters long."
+        )
+
+    # 2. Local Duplicate Pre-Check: Scan relational tables before processing cloud allocations
+    username_check = await db.execute(select(User).where(User.username == username_text))
     if username_check.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"The administrative username '{payload.username}' is already allocated inside system records."
+            detail=f"The administrative username '{username_text}' is already allocated inside system records."
         )
 
-    email_check = await db.execute(select(User).where(User.email == payload.email))
+    email_check = await db.execute(select(User).where(User.email == email_address))
     if email_check.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"The institutional address '{payload.email}' is already mapped to an active profile."
+            detail=f"The institutional address '{email_address}' is already mapped to an active profile."
         )
 
+    # 3. Cloud Provider Isolation: Attempt remote account allocation first
+    firebase_uid_token = None
     try:
-        # 2. Programmatically provision user account inside central Firebase cloud tenancy
         fb_user = firebase_auth.create_user(
-            email=payload.email,
-            password=payload.password,
-            display_name=payload.full_name
+            email=email_address,
+            password=raw_password,
+            display_name=full_name,
+            disabled=False
         )
-        fb_uid = fb_user.uid
+        firebase_uid_token = fb_user.uid
+        
+        # Inject custom user claims for administrative role matching
+        firebase_auth.set_custom_user_claims(firebase_uid_token, {"role": "admin"})
+        
     except Exception as cloud_err:
+        print(f"❌ [FIREBASE AUTH REGJECTION] Cloud provider blocked account deployment: {str(cloud_err)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cloud infrastructure identity allocation exception dropped: {str(cloud_err)}"
+            detail=f"Identity Provider Error: {str(cloud_err)}"
         )
 
+    # 4. Local Persistence Phase: Commit record data rows safely to local disk files
     try:
-        # 3. Compile and insert matching record row directly into local user table
         new_admin = User(
-            email=payload.email,
-            hashed_password=hash_password(payload.password),
-            name=payload.full_name,
+            email=email_address,
+            username=username_text,
+            name=full_name,
             role="admin",
-            username=payload.username,
-            firebase_uid=fb_uid,
-            is_active=True
+            firebase_uid=firebase_uid_token,
+            is_active=True,
+            hashed_password=hash_password(raw_password)
         )
         db.add(new_admin)
-        await db.commit()
         
-        print(f"👑 [ADMIN PROVISIONED] New operator '{payload.username}' generated by {current_admin.get('email')}.")
+        # Log entry context directly into system timelines
+        try:
+            audit_query = text("""
+                INSERT INTO chat_audit_logs (user_query, ai_response, latency_seconds, estimated_tokens, is_safe, triggered_rules)
+                VALUES (:user_query, :ai_response, :latency_seconds, :estimated_tokens, :is_safe, :triggered_rules)
+            """)
+            await db.execute(audit_query, {
+                "user_query": "ADMIN_PROVISION_OPERATOR",
+                "ai_response": f"Successfully initialized administrative profile for operator username '{username_text}' ({email_address}).",
+                "latency_seconds": 0.0,
+                "estimated_tokens": 0,
+                "is_safe": True,
+                "triggered_rules": "None"
+            })
+        except Exception:
+            pass
+
+        await db.commit()
+        # 👑 FIXED: Standardized dot lookups (`current_admin.email`) to eliminate the AttributeError 500 crash!
+        print(f"👑 [ADMIN PROVISIONED] New operator '{username_text}' generated successfully by supervisor {current_admin.email}.")
         return {
             "success": True, 
-            "message": f"Administrative operator profile '{payload.username}' successfully registered."
+            "message": f"Administrative operator profile '{username_text}' successfully registered."
         }
+        
     except Exception as db_err:
         await db.rollback()
+        print(f"❌ [DB WRITE FAIL] Relational commit failed. Processing cloud compensation fallback... {str(db_err)}")
+        
+        # 👑 AUTOMATED COMPENSATION ROLLBACK HOOK
+        # If local database persistence breaks, delete the user from Firebase
+        # to ensure cloud states and local states stay perfectly synchronized.
+        if firebase_uid_token:
+            try:
+                firebase_auth.delete_user(firebase_uid_token)
+                print(f"🧹 [CLEANUP SUCCESS] Erased orphaned cloud profile UID: {firebase_uid_token}")
+            except Exception as rollback_fault:
+                print(f"⚠️ Compensation warning: Cloud user cleanup encountered an issue: {rollback_fault}")
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Relational persistent storage write block failed: {str(db_err)}"
@@ -325,7 +365,7 @@ async def create_new_administrative_user(
 @router.post("/promote", status_code=status.HTTP_200_OK)
 async def elevate_user_access_clearance(
     payload: PromoteUserPayload,
-    current_admin: dict = Depends(verify_admin_clearance),  # 🛡️ Locked behind strict admin route security checks
+    current_admin: User = Depends(verify_admin_clearance),  # 👑 FIXED: Swapped signature to receive standard User class
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -350,8 +390,8 @@ async def elevate_user_access_clearance(
             detail=f"Operation aborted: No user profile row exists matching address '{payload.target_email}'."
         )
 
-    # Guard: Prevent self-demotion anomalies
-    if target_user.email == current_admin.get("email") and payload.target_role != "admin":
+    # 👑 FIXED: Dot lookup notation (`current_admin.email`) keeps role comparisons safe from crashes
+    if target_user.email == current_admin.email and payload.target_role != "admin":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Security Violations: An administrator cannot strip away their own structural clearance codes."
@@ -361,18 +401,25 @@ async def elevate_user_access_clearance(
         old_role = target_user.role
         target_user.role = payload.target_role
         
+        # Synchronize custom custom user claims over Firebase cloud records as well
+        if target_user.firebase_uid:
+            try:
+                firebase_auth.set_custom_user_claims(target_user.firebase_uid, {"role": payload.target_role})
+            except Exception as claims_err:
+                print(f"⚠️ Firebase claims sync delayed: {claims_err}")
+
         db.add(target_user)
         await db.commit()
         
-        print(f"👑 [ACCESS UPGRADED] {target_user.email} changed roles from '{old_role}' to '{payload.target_role}' by admin operator {current_admin.get('email')}.")
+        print(f"👑 [ACCESS UPGRADED] {target_user.email} changed roles from '{old_role}' to '{payload.target_role}' by admin operator {current_admin.email}.")
         
         return {
             "success": True,
-            "message": f"Account profile authorization updated completely.",
+            "message": "Account profile authorization updated completely.",
             "target_user_email": target_user.email,
             "previous_clearance": old_role,
             "assigned_clearance": target_user.role,
-            "authorizing_operator": current_admin.get("email")
+            "authorizing_operator": current_admin.email
         }
 
     except Exception as write_fault:

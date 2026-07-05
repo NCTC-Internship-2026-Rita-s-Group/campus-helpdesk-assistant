@@ -28,22 +28,25 @@ export const Route = createFileRoute("/_authenticated/admin/dashboard")({
 function AdminDashboardComponent() {
   const { user } = useAuth();
 
-  // ✅ FIX: ALL hooks must be declared BEFORE any conditional return
-  // Violating this (hooks after early return) breaks React's Rules of Hooks
+  // 🎛️ Complete Admin Operational Hooks Stack
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [kbDocs, setKbDocs] = useState<KBDocument[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [kbLoading, setKbLoading] = useState<boolean>(true);
   const [rightPanelTab, setRightPanelTab] = useState<"notice" | "provision">("notice");
+
   const [noticeTitle, setNoticeTitle] = useState("");
+  // 👑 FIXED: Sets standard initial state to first index matching production list categories
   const [noticeCategory, setNoticeCategory] = useState("Academics");
   const [noticeContent, setNoticeContent] = useState("");
   const [broadcastSuccess, setBroadcastSuccess] = useState(false);
+
   const [adminFullName, setAdminFullName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminUsername, setAdminUsername] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [provisionLoading, setProvisionLoading] = useState(false);
+
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [uploading, setUploading] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -76,14 +79,10 @@ function AdminDashboardComponent() {
       };
 
       ws.onclose = () => {
-        console.warn(
-          "WebSocket stream disconnected. Re-engaging handshake connection threads in 4s...",
-        );
         reconnectionTimer = setTimeout(connectWebSocketPipeline, 4000);
       };
 
-      ws.onerror = (error) => {
-        console.error("WebSocket network pipeline exception observed:", error);
+      ws.onerror = () => {
         ws?.close();
       };
     }
@@ -116,7 +115,7 @@ function AdminDashboardComponent() {
     syncDashboardData();
   }, []);
 
-  // ✅ FIX: Role gate now comes AFTER all hooks — safe conditional render
+  // 🛡️ ADMINISTRATIVE clearance enforcement
   if (user?.role?.toLowerCase() !== "admin") {
     return (
       <div className="flex min-h-[calc(100vh-8rem)] w-full flex-col items-center justify-center p-6 text-center text-white">
@@ -126,11 +125,8 @@ function AdminDashboardComponent() {
             Administrative Security Alert
           </h2>
           <p className="mt-2 text-xs leading-relaxed text-slate-300">
-            Your current credential profile is mapped to the{" "}
-            <span className="text-[color:var(--gold)] font-bold font-mono uppercase">
-              {user?.role || "unknown"}
-            </span>{" "}
-            role layer. You do not hold clearance to parse this gateway.
+            Your current profile level does not possess active credentials required to look into
+            this gateway terminal context.
           </p>
           <div className="mt-6">
             <Link
@@ -247,7 +243,6 @@ function AdminDashboardComponent() {
     processFileUpload(e.dataTransfer.files);
   };
 
-  // ✅ FIX: null guard added — doc.format can be undefined from API response
   const getFileIcon = (format: string | undefined | null) => {
     if (!format) return <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />;
     const fmt = format.toLowerCase();
@@ -334,7 +329,7 @@ function AdminDashboardComponent() {
                           <p className="text-xs text-slate-400">
                             Opened trace:{" "}
                             <span className="text-slate-300 font-medium">
-                              {ticket.created_date}
+                              {ticket.created_date || (ticket as any).created_at}
                             </span>
                           </p>
                         </div>
@@ -342,22 +337,14 @@ function AdminDashboardComponent() {
                         <div className="flex items-center gap-1.5 self-end sm:self-center">
                           <button
                             onClick={() => updateTicketStatus(ticket.id, "In Review")}
-                            className={`rounded-lg p-2 text-xs font-medium border transition-all flex items-center gap-1 ${
-                              ticket.status === "In Review"
-                                ? "bg-amber-500/20 border-amber-500/40 text-amber-400 shadow-md"
-                                : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10"
-                            }`}
+                            className={`rounded-lg p-2 text-xs font-medium border transition-all flex items-center gap-1 ${ticket.status === "In Review" ? "bg-amber-500/20 border-amber-500/40 text-amber-400 shadow-md" : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10"}`}
                             title="Mark In Review"
                           >
                             <Clock className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => updateTicketStatus(ticket.id, "Resolved")}
-                            className={`rounded-lg p-2 text-xs font-medium border transition-all flex items-center gap-1 ${
-                              ticket.status === "Resolved"
-                                ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400 shadow-md"
-                                : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10 hover:text-emerald-400"
-                            }`}
+                            className={`rounded-lg p-2 text-xs font-medium border transition-all flex items-center gap-1 ${ticket.status === "Resolved" ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400 shadow-md" : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10 hover:text-emerald-400"}`}
                             title="Mark Resolved"
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -371,29 +358,21 @@ function AdminDashboardComponent() {
             </div>
           </div>
 
-          {/* RIGHT: Operational Card Deck */}
+          {/* RIGHT: Operational Card Deck Form Router Container */}
           <div className="lg:col-span-5">
             <div className="glass-panel rounded-2xl border border-white/10 bg-[#001A4D]/40 p-5 backdrop-blur-md shadow-xl text-left h-full flex flex-col justify-between">
               <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/40 p-1 border border-white/5 mb-4 shrink-0">
                 <button
                   type="button"
                   onClick={() => setRightPanelTab("notice")}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-all ${
-                    rightPanelTab === "notice"
-                      ? "bg-[color:var(--gold)] text-slate-950 shadow-md"
-                      : "text-slate-400 hover:text-white"
-                  }`}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-all ${rightPanelTab === "notice" ? "bg-[color:var(--gold)] text-slate-950 shadow-md" : "text-slate-400 hover:text-white"}`}
                 >
                   <Megaphone className="h-3.5 w-3.5" /> Broadcast
                 </button>
                 <button
                   type="button"
                   onClick={() => setRightPanelTab("provision")}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-all ${
-                    rightPanelTab === "provision"
-                      ? "bg-[color:var(--gold)] text-slate-950 shadow-md"
-                      : "text-slate-400 hover:text-white"
-                  }`}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-all ${rightPanelTab === "provision" ? "bg-[color:var(--gold)] text-slate-950 shadow-md" : "text-slate-400 hover:text-white"}`}
                 >
                   <UserPlus className="h-3.5 w-3.5" /> Add Admin
                 </button>
@@ -418,18 +397,61 @@ function AdminDashboardComponent() {
                         required
                       />
                     </div>
+
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-slate-300">Category Tag</label>
+                      {/* 👑 FIXED: Applied clear background and visible colors directly onto select element & option trees to block browser defaults rendering dark tags */}
                       <select
                         value={noticeCategory}
                         onChange={(e) => setNoticeCategory(e.target.value)}
-                        className="w-full rounded-xl bg-black/30 border border-white/10 p-3 text-sm text-slate-200 outline-none focus:border-[color:var(--gold)]/60 transition-colors"
+                        className="w-full rounded-xl bg-[#0a122c] border border-white/10 p-3 text-sm text-slate-100 outline-none focus:border-[color:var(--gold)]/60 transition-colors cursor-pointer font-sans shadow-inner"
                       >
-                        <option value="Academics">Academics</option>
-                        <option value="Placements">Placements</option>
-                        <option value="Facilities">Facilities</option>
+                        {/* 👑 ENHANCED CATEGORIES MATRIX: Expands choices completely to support real production operations criteria parameters */}
+                        <option
+                          value="Academics"
+                          className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                        >
+                          Academics
+                        </option>
+                        <option
+                          value="Examinations"
+                          className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                        >
+                          Examinations
+                        </option>
+                        <option
+                          value="Placements"
+                          className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                        >
+                          Placements & Career
+                        </option>
+                        <option
+                          value="Events"
+                          className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                        >
+                          Events & Hackathons
+                        </option>
+                        <option
+                          value="Finance"
+                          className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                        >
+                          Finance & Scholarships
+                        </option>
+                        <option
+                          value="Facilities"
+                          className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                        >
+                          Hostel & Infrastructure
+                        </option>
+                        <option
+                          value="Admin"
+                          className="bg-[#0b1430] text-slate-100 font-semibold py-2"
+                        >
+                          General Administration
+                        </option>
                       </select>
                     </div>
+
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-slate-300">
                         Detailed Circular Content
@@ -447,11 +469,7 @@ function AdminDashboardComponent() {
                   <button
                     type="submit"
                     disabled={broadcastSuccess}
-                    className={`w-full font-bold text-xs rounded-xl py-3 border transition-all mt-4 flex items-center justify-center gap-2 ${
-                      broadcastSuccess
-                        ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400 shadow-md"
-                        : "bg-[color:var(--gold)] border-transparent text-slate-950 hover:brightness-110"
-                    }`}
+                    className={`w-full font-bold text-xs rounded-xl py-3 border transition-all mt-4 flex items-center justify-center gap-2 ${broadcastSuccess ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400 shadow-md" : "bg-[color:var(--gold)] border-transparent text-slate-950 hover:brightness-110"}`}
                   >
                     {broadcastSuccess ? (
                       <>
@@ -546,7 +564,7 @@ function AdminDashboardComponent() {
           </div>
         </div>
 
-        {/* 📂 LOWER SECTION: Knowledge Base Management */}
+        {/* 📂 LOWER SECTION: Knowledge Base Management Table Array */}
         <div className="glass-panel rounded-2xl border border-white/10 bg-[#001A4D]/40 p-5 backdrop-blur-md shadow-xl text-left">
           <div className="mb-4 flex items-center justify-between border-b border-white/5 pb-3">
             <div className="flex items-center gap-2">
@@ -556,14 +574,13 @@ function AdminDashboardComponent() {
                   Helpdesk AI Knowledge Base Ingestion
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Stream document and image binaries natively to feed vector index clusters
+                  Stream document binaries natively to feed vector index clusters
                 </p>
               </div>
             </div>
             <button
               onClick={refreshKnowledgeBase}
               className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-[color:var(--gold)] border border-white/5 bg-white/5 transition-all"
-              title="Refresh Inventory"
             >
               <RefreshCw
                 className={`h-4 w-4 ${kbLoading ? "animate-spin text-[color:var(--gold)]" : ""}`}
@@ -578,11 +595,7 @@ function AdminDashboardComponent() {
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`relative flex h-full min-h-[12rem] flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all cursor-pointer select-none ${
-                  isDragging
-                    ? "border-[color:var(--gold)] bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.1)]"
-                    : "border-white/20 bg-black/20 hover:border-white/40"
-                }`}
+                className={`relative flex h-full min-h-[12rem] flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all cursor-pointer select-none ${isDragging ? "border-[color:var(--gold)] bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.1)]" : "border-white/20 bg-black/20 hover:border-white/40"}`}
               >
                 <input
                   type="file"
@@ -602,14 +615,12 @@ function AdminDashboardComponent() {
                     <div className="mx-auto grid h-10 w-10 place-items-center rounded-xl bg-white/5 border border-white/10 text-[color:var(--gold)] shadow-inner">
                       <FileUp className="h-5 w-5" />
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-200">
-                        Drag & drop campus asset here
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-slate-400">
-                        or click to browse local storage directory
-                      </p>
-                    </div>
+                    <p className="text-xs font-semibold text-slate-200">
+                      Drag & drop campus asset here
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-400">
+                      or click to browse local storage directory
+                    </p>
                   </div>
                 )}
               </div>
@@ -638,11 +649,13 @@ function AdminDashboardComponent() {
                         kbDocs.map((doc) => (
                           <tr key={doc.id} className="hover:bg-white/5 transition-colors">
                             <td className="p-2.5 max-w-xs font-medium text-slate-200 flex items-center gap-2 truncate">
-                              {getFileIcon(doc.format)}
+                              {getFileIcon(
+                                doc.format || (doc as any).type || (doc as any).extension,
+                              )}
                               <span className="truncate">{doc.filename}</span>
                             </td>
                             <td className="p-2.5 font-mono text-[10px] text-slate-400 font-bold">
-                              {doc.format}
+                              {doc.format || (doc as any).type || "pdf"}
                             </td>
                             <td className="p-2.5">
                               <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400 font-mono">
@@ -650,7 +663,7 @@ function AdminDashboardComponent() {
                               </span>
                             </td>
                             <td className="p-2.5 text-right font-mono text-[10px] text-slate-400">
-                              {doc.fileSize}
+                              {doc.fileSize || (doc as any).size || "0 KB"}
                             </td>
                           </tr>
                         ))
@@ -660,8 +673,7 @@ function AdminDashboardComponent() {
                 </div>
               </div>
               <p className="text-[11px] text-slate-400 mt-2 px-1 leading-normal">
-                ⚠️ Adding files directly forces the AI assistant core to adapt conversational nodes.
-                Vector tokens are updated live.
+                ⚠️ Vector tokens are updated live on local storage mediums.
               </p>
             </div>
           </div>

@@ -1,14 +1,22 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { GraduationCap, ShieldCheck, Sparkles, ArrowLeft, Mail, Eye, EyeOff } from "lucide-react";
+import {
+  GraduationCap,
+  ShieldCheck,
+  Sparkles,
+  ArrowLeft,
+  Mail,
+  Eye,
+  EyeOff,
+  KeyRound,
+} from "lucide-react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   signInWithCustomToken,
-  sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { apiClient } from "../lib/api";
@@ -32,12 +40,16 @@ export const Route = createFileRoute("/auth")({
 });
 
 function AuthPage() {
-  const { user, ready, setAuthenticatedUser } = useAuth();
+  const { user, ready, setAuthenticatedUser, triggerPasswordReset, resolvePasswordReset } =
+    useAuth();
   const navigate = useNavigate();
 
   // High-Level Viewport Controllers
   const [role, setRole] = useState<Role>("student");
-  const [studentFlow, setStudentFlow] = useState<"options" | "email_form" | "forgot">("options");
+  // 👑 EXTENDED: Added 'confirm_reset' state to handle incoming email verification links smoothly
+  const [studentFlow, setStudentFlow] = useState<
+    "options" | "email_form" | "forgot" | "confirm_reset"
+  >("options");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
 
   // Visibility State Controller Matrix
@@ -48,16 +60,33 @@ function AuthPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [actionCode, setActionCode] = useState(""); // 🔒 Captures secure out-of-band email reset tokens
   const [authLoading, setAuthLoading] = useState(false);
+
+  // Intercept inbound security reset action tokens from email client link redirections
+  useEffect(() => {
+    const urlSearchParameters = new URLSearchParams(window.location.search);
+    const oobToken = urlSearchParameters.get("oobCode");
+    const firebaseMode = urlSearchParameters.get("mode");
+
+    if (oobToken && firebaseMode === "resetPassword") {
+      setRole("student");
+      setStudentFlow("confirm_reset");
+      setActionCode(oobToken);
+      toast.info("Security access token detected. Please set your new password below.");
+    }
+  }, []);
 
   // Sync tab switching behaviors cleanly
   useEffect(() => {
-    setStudentFlow("options");
-    setMode("signin");
-    setShowPassword(false);
+    if (studentFlow !== "confirm_reset") {
+      setStudentFlow("options");
+      setMode("signin");
+      setShowPassword(false);
+    }
   }, [role]);
 
-  // 🛡️ FIXED: Session Interceptor optimized to prevent redirection race conditions during manual active submissions
+  // Session Interceptor optimized to prevent redirection race conditions
   useEffect(() => {
     if (ready && user && !authLoading && studentFlow === "options") {
       navigate({ to: homeFor(user.role), replace: true });
@@ -88,6 +117,7 @@ function AuthPage() {
           name: syncProfile.name,
           role: syncProfile.role as Role,
           token: idToken,
+          emailVerified: userCredential.user.emailVerified,
         });
 
         toast.success(`Access Clear: Welcome ${syncProfile.name}`);
@@ -109,10 +139,10 @@ function AuthPage() {
           role: adminAuthData.role as Role,
           token: freshJwtToken,
           username: username.trim(),
+          emailVerified: true,
         });
 
         toast.success("Welcome back to your Admin Dashboard console.");
-        // 🚀 FORCE DIRECTION TARGET FLUSH: Direct routing execution bypasses background state listeners cleanly
         navigate({ to: adminAuthData.redirect_target, replace: true });
       }
     } catch (error: any) {
@@ -123,21 +153,44 @@ function AuthPage() {
     }
   };
 
+  // 👑 PRODUCTION UPGRADE: Tied to your centralized Auth Context trigger method
   const handleInlinePasswordRecovery = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !email.includes("@")) {
-      toast.error("Valid email address required.");
+      toast.error("Valid institutional email address required.");
       return;
     }
 
     setAuthLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email.trim());
-      toast.success("Password recovery link has been pushed to your email inbox.");
+      await triggerPasswordReset(email.trim());
       setStudentFlow("email_form");
       setMode("signin");
     } catch (err: any) {
       toast.error(err.message || "Failed to issue password recovery link.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // 👑 PRODUCTION UPGRADE: Submits and confirms incoming code-based password shifts
+  const handleConfirmPasswordResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 6) {
+      toast.error("Security criteria mismatch: Password must be at least 6 characters.");
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      await resolvePasswordReset(actionCode, password);
+      // Clean up URL parameters after successful confirmation
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setStudentFlow("email_form");
+      setMode("signin");
+      setPassword("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to execute password adjustment update.");
     } finally {
       setAuthLoading(false);
     }
@@ -156,6 +209,7 @@ function AuthPage() {
         name: syncProfile.name,
         role: syncProfile.role as Role,
         token: idToken,
+        emailVerified: result.user.emailVerified,
       });
 
       toast.success("Google sign-on synchronization mapped successfully.");
@@ -172,7 +226,6 @@ function AuthPage() {
     <div className="relative min-h-screen bg-[#030712] text-white selection:bg-amber-500/30">
       <AmbientBackdrop />
 
-      {/* 🌌 ORIGINAL HIGH-VISIBILITY UNIVERSITY BRANDING HEADER */}
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-[#030712]/60 border-b border-white/5 px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 p-0.5 font-bold text-slate-950 flex items-center justify-center tracking-wider text-sm shadow-md">
@@ -191,7 +244,7 @@ function AuthPage() {
           </div>
         </div>
 
-        {role === "student" && studentFlow !== "forgot" && (
+        {role === "student" && studentFlow !== "forgot" && studentFlow !== "confirm_reset" && (
           <button
             type="button"
             onClick={() => {
@@ -207,12 +260,10 @@ function AuthPage() {
       </header>
 
       <main className="mx-auto grid max-w-7xl gap-8 px-6 py-10 md:grid-cols-2 md:gap-12 md:py-16 items-center">
-        {/* Left Informational Showcase Panel */}
         <section className="glass-panel animate-fade-up flex flex-col justify-between rounded-3xl p-8 md:p-10 min-h-[460px]">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--gold)]/30 bg-[color:var(--gold)]/5 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[color:var(--gold)]">
-              <Sparkles className="h-3.5 w-3.5" />
-              Autonomous RAG
+              <Sparkles className="h-3.5 w-3.5" /> Autonomous RAG
             </div>
             <h1 className="mt-6 font-display text-4xl font-bold leading-tight text-foreground md:text-5xl text-left">
               The intelligent helpdesk for{" "}
@@ -241,9 +292,8 @@ function AuthPage() {
           </ul>
         </section>
 
-        {/* Right Authentication Interactor Form Card */}
         <section className="glass-panel animate-fade-up rounded-3xl p-8 md:p-10 flex flex-col justify-center min-h-[460px]">
-          {studentFlow !== "forgot" && (
+          {studentFlow !== "forgot" && studentFlow !== "confirm_reset" && (
             <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/5 bg-[color:var(--navy)]/40 p-1 mb-8 shrink-0">
               {(["student", "admin"] as Role[]).map((r) => {
                 const active = role === r;
@@ -273,21 +323,72 @@ function AuthPage() {
               {role === "student"
                 ? studentFlow === "forgot"
                   ? "Reset Password"
-                  : mode === "signin"
-                    ? "Student Login"
-                    : "Create Student Account"
+                  : studentFlow === "confirm_reset"
+                    ? "Establish New Password"
+                    : mode === "signin"
+                      ? "Student Login"
+                      : "Create Student Account"
                 : "Administrative Portal"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {role === "student"
                 ? studentFlow === "forgot"
                   ? "Receive a secure self-service password recovery link"
-                  : "Access your student helpdesk context panel"
+                  : studentFlow === "confirm_reset"
+                    ? "Enter your updated high-security account password criteria"
+                    : "Access your student helpdesk context panel"
                 : "Secure Operator Workspace Authorization"}
             </p>
           </div>
 
-          {/* FLOW STEP 1: OPTIONS PANEL */}
+          {/* STEP 2.A: EXPLICIT PASSWORD CONFIRMATION LIFECYCLE STATE */}
+          {role === "student" && studentFlow === "confirm_reset" && (
+            <form
+              onSubmit={handleConfirmPasswordResetSubmit}
+              className="space-y-4 text-left animate-fade-in"
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="new-password" className="text-foreground/80">
+                  Updated Security Key
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="new-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Minimum 6 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="h-11 border-white/10 bg-white/5 text-white pr-10 focus-visible:ring-[color:var(--gold)]/50 font-sans"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4.5 w-4.5" />
+                    ) : (
+                      <Eye className="h-4.5 w-4.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <Button
+                type="submit"
+                disabled={authLoading}
+                className="w-full h-11 bg-[color:var(--gold)] text-slate-950 font-bold hover:bg-[color:var(--gold)]/90 flex items-center justify-center gap-2 shadow-md"
+              >
+                {authLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <KeyRound className="h-4 w-4" />
+                )}
+                Confirm Updated Key Pass
+              </Button>
+            </form>
+          )}
+
           {role === "student" && studentFlow === "options" && (
             <div className="space-y-4 animate-fade-in">
               <Button
@@ -321,19 +422,16 @@ function AuthPage() {
                 </svg>
                 Continue with Google
               </Button>
-
               <Button
                 type="button"
                 onClick={() => setStudentFlow("email_form")}
                 className="w-full h-12 bg-[#1e293b]/60 border border-slate-700 text-white font-bold hover:bg-slate-800 flex items-center justify-center gap-3 rounded-xl transition-all active:scale-[0.99]"
               >
-                <Mail className="h-4 w-4 text-amber-400" />
-                Continue with Email
+                <Mail className="h-4 w-4 text-amber-400" /> Continue with Email
               </Button>
             </div>
           )}
 
-          {/* FLOW STEP 2: RECOVERY MODULE */}
           {role === "student" && studentFlow === "forgot" && (
             <form
               onSubmit={handleInlinePasswordRecovery}
@@ -370,7 +468,6 @@ function AuthPage() {
             </form>
           )}
 
-          {/* FLOW STEP 3: CREDENTIAL FORMS */}
           {((role === "student" && studentFlow === "email_form") || role === "admin") && (
             <form onSubmit={onSubmit} className="space-y-4 text-left animate-fade-in">
               {role === "student" && mode === "signup" && (
@@ -397,7 +494,7 @@ function AuthPage() {
                   </Label>
                   <Input
                     id="email"
-                    type="email"
+                    type="type"
                     placeholder="name@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -451,7 +548,6 @@ function AuthPage() {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
-                    title={showPassword ? "Hide password" : "Reveal password"}
                   >
                     {showPassword ? (
                       <EyeOff className="h-4.5 w-4.5" />
@@ -501,7 +597,6 @@ function AuthPage() {
                       {mode === "signin" ? "Create an account" : "Sign in instead"}
                     </button>
                   </p>
-
                   <button
                     type="button"
                     onClick={() => setStudentFlow("options")}

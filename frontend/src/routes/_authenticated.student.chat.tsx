@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import { toast } from "sonner";
+
 import {
   AlertTriangle,
   ChevronDown,
@@ -17,22 +20,30 @@ import {
   Loader2,
   CheckCircle2,
 } from "lucide-react";
+
 import { useAuth } from "@/lib/auth";
+
 import { apiClient, LiveChatMessage } from "@/lib/api";
 
 export const Route = createFileRoute("/_authenticated/student/chat")({
   head: () => ({
     meta: [{ title: "AI Helpdesk · Amity" }],
   }),
+
   component: StudentChat,
 });
 
 interface ChatSession {
   id: string;
+
   title: string;
+
   createdAt: number;
+
   updatedAt: number;
+
   messages: LiveChatMessage[];
+
   titleSet: boolean;
 }
 
@@ -42,31 +53,45 @@ function StudentChat() {
   const [sessions, setSessions] = useState<ChatSession[]>(() => [
     {
       id: "default-session",
+
       title: "Welcome Thread",
+
       createdAt: Date.now(),
+
       updatedAt: Date.now(),
+
       titleSet: false,
+
       messages: [
         {
           id: "welcome-init",
+
           role: "assistant",
+
           createdAt: Date.now(),
+
           content: `### Welcome to the Amity Helpdesk\n\nHello ${user?.name ?? "Student"} — I'm your autonomous institutional assistant. Ask me about **hostel regulations**, **examination timetables**, **placements**, or any **campus policy**. I'll verify and cite source documentation blocks for every response.`,
+
           context_verified: true,
+
           sources: [],
         },
       ],
     },
   ]);
+
   const [activeId, setActiveId] = useState<string>("default-session");
 
   const active = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? sessions[0],
+
     [sessions, activeId],
   );
 
   const [input, setInput] = useState("");
+
   const [thinking, setThinking] = useState(false);
+
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,41 +100,59 @@ function StudentChat() {
 
   const newConversation = () => {
     const nextId = `session-${Date.now()}`;
+
     const newSession: ChatSession = {
       id: nextId,
+
       title: "New Conversation",
+
       createdAt: Date.now(),
+
       updatedAt: Date.now(),
+
       titleSet: false,
+
       messages: [],
     };
+
     setSessions((prev) => [newSession, ...prev]);
+
     setActiveId(nextId);
   };
 
   const deleteConversation = (id: string) => {
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
+
       if (id === activeId) setActiveId(next[0]?.id ?? "default-session");
+
       return next.length
         ? next
         : [
             {
               id: "default-session",
+
               title: "Welcome Thread",
+
               createdAt: Date.now(),
+
               updatedAt: Date.now(),
+
               titleSet: false,
+
               messages: [],
             },
           ];
     });
+
     toast.info("Conversation removed.");
   };
 
   const send = async (e?: React.FormEvent) => {
     e?.preventDefault();
+
     const text = input.trim();
+
     if (!text || thinking || !active) return;
 
     const optimisticTitle =
@@ -117,8 +160,11 @@ function StudentChat() {
 
     const userMsg: LiveChatMessage = {
       id: `user-${Date.now()}`,
+
       role: "user",
+
       createdAt: Date.now(),
+
       content: text,
     };
 
@@ -127,9 +173,13 @@ function StudentChat() {
         s.id === active.id
           ? {
               ...s,
+
               title: !s.titleSet ? optimisticTitle : s.title,
+
               titleSet: !s.titleSet ? true : s.titleSet,
+
               updatedAt: Date.now(),
+
               messages: [...s.messages, userMsg],
             }
           : s,
@@ -137,11 +187,13 @@ function StudentChat() {
     );
 
     setInput("");
+
     setThinking(true);
 
     try {
       const history = active.messages.slice(-6).map((m) => ({
         role: m.role,
+
         content: m.content,
       }));
 
@@ -155,10 +207,15 @@ function StudentChat() {
 
       const assistantMsg: LiveChatMessage = {
         id: reply.id,
+
         role: "assistant",
+
         createdAt: Date.now(),
+
         content: reply.content,
+
         context_verified: reply.context_verified,
+
         sources: reply.sources,
       };
 
@@ -172,10 +229,12 @@ function StudentChat() {
 
       if (reply.context_verified === false) {
         const ticketId = `TK-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
         toast.warning(`Low confidence — incident log dispatched: ${ticketId}`);
       }
     } catch (err) {
       console.error("Chat error:", err);
+
       toast.error("Connection lost. Please try again.");
     } finally {
       setThinking(false);
@@ -185,6 +244,7 @@ function StudentChat() {
   return (
     <main className="mx-auto grid h-[calc(100dvh-5.5rem)] max-w-7xl grid-cols-1 gap-4 px-3 py-4 md:grid-cols-[300px_1fr] md:px-6 text-white overflow-hidden items-stretch bg-[#020617]">
       {/* ── SIDEBAR ── */}
+
       <aside className="hidden h-full flex-col overflow-hidden rounded-2xl md:flex bg-[#000E2B]/50 backdrop-blur-md shrink-0 border border-white/8 shadow-2xl">
         <div className="p-4 border-b border-white/5">
           <button
@@ -203,6 +263,7 @@ function StudentChat() {
         <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1 layout-scroll-container mt-1">
           {sessions.map((s) => {
             const isActive = s.id === activeId;
+
             return (
               <div
                 key={s.id}
@@ -217,9 +278,11 @@ function StudentChat() {
                 <div className="flex-1 truncate text-left text-[13.5px]" title={s.title}>
                   {s.title || "Untitled"}
                 </div>
+
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+
                     deleteConversation(s.id);
                   }}
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 shrink-0"
@@ -236,6 +299,7 @@ function StudentChat() {
             <Sparkles className="h-3.5 w-3.5" />
             LLaMA 3.3 Production Core
           </div>
+
           <p className="text-[11px] text-slate-500 leading-relaxed">
             Vector embeddings active. Responses verified against institutional circulars.
           </p>
@@ -243,23 +307,28 @@ function StudentChat() {
       </aside>
 
       {/* ── CHAT PANEL ── */}
+
       <section className="flex h-full flex-col overflow-hidden rounded-2xl bg-[#001A4D]/20 backdrop-blur-md border border-white/8 shadow-2xl relative">
         {/* Header */}
+
         <div className="flex items-center justify-between border-b border-white/5 px-6 py-4 bg-[#000A1F]/30 shrink-0">
           <div>
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] text-[color:var(--gold)]/80 font-bold mb-0.5">
               <Sparkles className="h-3 w-3" /> Conversational AI Hub
             </div>
+
             <h1 className="font-display text-[15px] font-bold text-slate-100 truncate max-w-sm sm:max-w-lg">
               {active?.title || "New Conversation"}
             </h1>
           </div>
+
           <span className="hidden text-[10px] font-mono text-slate-600 bg-white/5 border border-white/5 px-2 py-1 rounded-lg sm:block select-none">
             {active?.id?.slice(0, 14)}
           </span>
         </div>
 
         {/* Messages */}
+
         <div
           ref={scrollerRef}
           className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 layout-scroll-container"
@@ -268,11 +337,13 @@ function StudentChat() {
             {active?.messages.map((m) => (
               <MessageBubble key={m.id} msg={m} />
             ))}
+
             {thinking && <ThinkingBubble />}
           </div>
         </div>
 
         {/* Input */}
+
         <div className="border-t border-white/5 px-4 py-4 sm:px-6 bg-[#000A1F]/30 backdrop-blur-md shrink-0">
           <div className="mx-auto max-w-2xl">
             <div className="flex items-end gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 focus-within:border-[color:var(--gold)]/40 transition-all shadow-inner">
@@ -290,6 +361,7 @@ function StudentChat() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
+
                     void send();
                   }
                 }}
@@ -329,6 +401,7 @@ function MessageBubble({ msg }: { msg: LiveChatMessage }) {
             {msg.content}
           </div>
         </div>
+
         <div className="h-8 w-8 rounded-full bg-[color:var(--gold)]/15 border border-[color:var(--gold)]/25 text-[color:var(--gold)] flex items-center justify-center shrink-0 shadow-sm">
           <User className="h-4 w-4" />
         </div>
@@ -346,6 +419,7 @@ function MessageBubble({ msg }: { msg: LiveChatMessage }) {
 
       <div className="flex flex-col gap-3 max-w-[85%] min-w-0">
         {/* Verification badge */}
+
         {msg.id !== "welcome-init" && (
           <div className="flex items-center gap-1.5">
             {msg.context_verified ? (
@@ -361,6 +435,7 @@ function MessageBubble({ msg }: { msg: LiveChatMessage }) {
         )}
 
         {/* Message card */}
+
         <div className="rounded-2xl rounded-tl-sm border border-white/8 px-5 py-4 text-[14px] leading-relaxed text-slate-200 bg-[#0b1a40]/60 backdrop-blur-sm shadow-md w-full">
           {msg.id !== "welcome-init" ? (
             <StreamingMarkdownWrapper text={msg.content} speed={10} />
@@ -370,11 +445,14 @@ function MessageBubble({ msg }: { msg: LiveChatMessage }) {
         </div>
 
         {/* Escalation notice */}
+
         {escalated && (
           <div className="flex items-start gap-3 rounded-xl border border-orange-500/20 bg-orange-500/8 px-4 py-3 text-[13px] text-orange-200 animate-fade-in">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+
             <div>
               <div className="font-semibold text-orange-300 mb-0.5">Escalated for Admin Review</div>
+
               <div className="text-orange-200/70 leading-relaxed text-[12px]">
                 Confidence threshold dipped. A support ticket has been auto-raised to the operator
                 queue.
@@ -397,13 +475,16 @@ function ThinkingBubble() {
       <div className="h-8 w-8 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
         <Loader2 className="h-4 w-4 animate-spin" />
       </div>
+
       <div className="rounded-2xl rounded-tl-sm border border-white/8 bg-[#0b1a40]/60 px-4 py-3 text-[13px] text-slate-500 flex items-center gap-3">
         <div className="flex gap-1">
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--gold)]/60" />
+
           <span
             className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--gold)]/60"
             style={{ animationDelay: "120ms" }}
           />
+
           <span
             className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--gold)]/60"
             style={{ animationDelay: "240ms" }}
@@ -422,16 +503,21 @@ function StreamingMarkdownWrapper({ text, speed = 12 }: { text: string; speed?: 
 
   useEffect(() => {
     const words = text.split(" ");
+
     let i = 0;
+
     setDisplayed("");
+
     const timer = setInterval(() => {
       if (i < words.length) {
         setDisplayed((prev) => (prev ? prev + " " : "") + words[i]);
+
         i++;
       } else {
         clearInterval(timer);
       }
     }, speed);
+
     return () => clearInterval(timer);
   }, [text, speed]);
 
@@ -454,6 +540,7 @@ function MarkdownRenderer({ text }: { text: string }) {
     <div className="space-y-2 text-left font-sans text-[14px] text-slate-200 leading-[1.75]">
       {text.split("\n").map((line, idx) => {
         const trimmed = line.trim();
+
         if (!trimmed) return <div key={idx} className="h-2" />;
 
         if (trimmed.startsWith("#### ")) {
@@ -474,6 +561,7 @@ function MarkdownRenderer({ text }: { text: string }) {
               className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-wider text-slate-100 mt-5 mb-3 border-b border-white/5 pb-2"
             >
               <Sparkles className="h-3.5 w-3.5 text-[color:var(--gold)] shrink-0" />
+
               {bold(trimmed.replace(/^###\s*/, ""))}
             </h3>
           );
@@ -488,10 +576,12 @@ function MarkdownRenderer({ text }: { text: string }) {
         }
 
         // Sub-bullets
+
         if (line.match(/^\s{2,}/) || trimmed.startsWith("+")) {
           return (
             <div key={idx} className="flex items-start gap-2.5 pl-7 my-1">
               <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-slate-500" />
+
               <p className="flex-1 text-[13px] text-slate-400 leading-relaxed">
                 {bold(trimmed.replace(/^[+\-*]\s*/, ""))}
               </p>
@@ -500,10 +590,12 @@ function MarkdownRenderer({ text }: { text: string }) {
         }
 
         // Top-level bullets
+
         if (trimmed.startsWith("* ") || trimmed.startsWith("- ")) {
           return (
             <div key={idx} className="flex items-start gap-3 pl-1 mt-2 mb-1">
               <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-sm bg-[color:var(--gold)]/70" />
+
               <div className="flex-1 font-medium text-slate-200 leading-relaxed">
                 {bold(trimmed.replace(/^[*\-]\s*/, ""))}
               </div>
@@ -528,10 +620,13 @@ function SourcesAccordion({ sources }: { sources: any[] }) {
 
   const icon = (filename: string) => {
     const ext = filename.split(".").pop()?.toLowerCase() || "";
+
     if (["png", "jpg", "jpeg", "webp"].includes(ext))
       return <FileImage className="h-3.5 w-3.5 text-purple-400 shrink-0" />;
+
     if (["csv", "xlsx"].includes(ext))
       return <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400 shrink-0" />;
+
     return <FileText className="h-3.5 w-3.5 text-blue-400 shrink-0" />;
   };
 
@@ -549,6 +644,7 @@ function SourcesAccordion({ sources }: { sources: any[] }) {
             {sources.length}
           </span>
         </span>
+
         <ChevronDown
           className={`h-3.5 w-3.5 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
         />
@@ -561,10 +657,12 @@ function SourcesAccordion({ sources }: { sources: any[] }) {
           <ul className="space-y-2 border-t border-white/5 px-4 py-3 bg-black/20">
             {sources.map((src, i) => {
               const name = typeof src === "string" ? src : src.doc || "Document.pdf";
+
               const snippet =
                 typeof src === "string"
                   ? "Verified reference from institutional documentation."
                   : src.snippet || "";
+
               return (
                 <li
                   key={i}
@@ -572,8 +670,10 @@ function SourcesAccordion({ sources }: { sources: any[] }) {
                 >
                   <div className="flex items-center gap-2 mb-2 truncate" title={name}>
                     {icon(name)}
+
                     <span className="font-medium text-slate-300 truncate">{name}</span>
                   </div>
+
                   {snippet && (
                     <p className="text-[11px] text-slate-400 bg-black/20 p-2.5 rounded-lg border border-white/5 italic leading-relaxed">
                       "{snippet}"

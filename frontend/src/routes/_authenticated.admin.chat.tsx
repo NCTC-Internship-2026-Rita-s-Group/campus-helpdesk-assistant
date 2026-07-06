@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import { toast } from "sonner";
+
 import {
   AlertTriangle,
   ChevronDown,
@@ -18,22 +21,30 @@ import {
   Loader2,
   CheckCircle2,
 } from "lucide-react";
+
 import { useAuth } from "@/lib/auth";
+
 import { apiClient, LiveChatMessage } from "@/lib/api";
 
 export const Route = createFileRoute("/_authenticated/admin/chat")({
   head: () => ({
     meta: [{ title: "AI Playground (Admin) · Amity" }],
   }),
+
   component: AdminChatPlayground,
 });
 
 interface ChatSession {
   id: string;
+
   title: string;
+
   createdAt: number;
+
   updatedAt: number;
+
   messages: LiveChatMessage[];
+
   titleSet: boolean;
 }
 
@@ -43,22 +54,33 @@ function AdminChatPlayground() {
   const [sessions, setSessions] = useState<ChatSession[]>(() => [
     {
       id: "admin-sandbox-init",
+
       title: "Knowledge Sandbox Matrix",
+
       createdAt: Date.now(),
+
       updatedAt: Date.now(),
+
       titleSet: false,
+
       messages: [
         {
           id: "admin-welcome-bubble",
+
           role: "assistant",
+
           createdAt: Date.now(),
+
           content: `### RAG Knowledge Base Sandbox\n\nHello ${user?.name ?? "Administrator"} — This is your dedicated administrative testing playground. Use this console to chat with the system and verify that newly uploaded **prospectus files**, **bylaws**, or **campus guidelines** are indexing and retrieving with accurate semantic thresholds.`,
+
           context_verified: true,
+
           sources: [],
         },
       ],
     },
   ]);
+
   const [activeId, setActiveId] = useState<string>("admin-sandbox-init");
 
   const active = useMemo(() => {
@@ -66,7 +88,9 @@ function AdminChatPlayground() {
   }, [sessions, activeId]);
 
   const [input, setInput] = useState("");
+
   const [thinking, setThinking] = useState(false);
+
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,41 +99,59 @@ function AdminChatPlayground() {
 
   const newConversation = () => {
     const nextId = `admin-session-${Date.now()}`;
+
     const newSession: ChatSession = {
       id: nextId,
+
       title: "New Sandbox Thread",
+
       createdAt: Date.now(),
+
       updatedAt: Date.now(),
+
       titleSet: false,
+
       messages: [],
     };
+
     setSessions((prev) => [newSession, ...prev]);
+
     setActiveId(nextId);
   };
 
   const deleteConversation = (id: string) => {
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
+
       if (id === activeId) setActiveId(next[0]?.id ?? "admin-sandbox-init");
+
       return next.length
         ? next
         : [
             {
               id: "admin-sandbox-init",
+
               title: "Knowledge Sandbox Matrix",
+
               createdAt: Date.now(),
+
               updatedAt: Date.now(),
+
               titleSet: false,
+
               messages: [],
             },
           ];
     });
+
     toast.info("Testing telemetry trace removed.");
   };
 
   const send = async (e?: React.FormEvent) => {
     e?.preventDefault();
+
     const text = input.trim();
+
     if (!text || thinking || !active) return;
 
     const optimisticTitle =
@@ -117,8 +159,11 @@ function AdminChatPlayground() {
 
     const userMsg: LiveChatMessage = {
       id: `admin-user-${Date.now()}`,
+
       role: "user",
+
       createdAt: Date.now(),
+
       content: text,
     };
 
@@ -127,9 +172,13 @@ function AdminChatPlayground() {
         s.id === active.id
           ? {
               ...s,
+
               title: !s.titleSet ? optimisticTitle : s.title,
+
               titleSet: !s.titleSet ? true : s.titleSet,
+
               updatedAt: Date.now(),
+
               messages: [...s.messages, userMsg],
             }
           : s,
@@ -137,17 +186,20 @@ function AdminChatPlayground() {
     );
 
     setInput("");
+
     setThinking(true);
 
     try {
       const currentConversationHistory = active.messages.slice(-6).map((msg) => ({
         role: msg.role,
+
         content: msg.content,
       }));
 
       const replyFromServer = await apiClient.sendChatMessage(text, currentConversationHistory);
 
       // Use backend-generated title if returned
+
       if (replyFromServer.generated_title) {
         setSessions((prev) =>
           prev.map((s) =>
@@ -158,10 +210,15 @@ function AdminChatPlayground() {
 
       const finalizedAssistantMessage: LiveChatMessage = {
         id: replyFromServer.id,
+
         role: "assistant",
+
         createdAt: Date.now(),
+
         content: replyFromServer.content,
+
         context_verified: replyFromServer.context_verified,
+
         sources: replyFromServer.sources,
       };
 
@@ -170,7 +227,9 @@ function AdminChatPlayground() {
           s.id === active.id
             ? {
                 ...s,
+
                 updatedAt: Date.now(),
+
                 messages: [...s.messages, finalizedAssistantMessage],
               }
             : s,
@@ -178,6 +237,7 @@ function AdminChatPlayground() {
       );
     } catch (error) {
       console.error("❌ Link connection error over admin RAG playground:", error);
+
       toast.error("Telemetry failure: Link connection lost to the local server engine container.");
     } finally {
       setThinking(false);
@@ -187,6 +247,7 @@ function AdminChatPlayground() {
   return (
     <main className="mx-auto grid h-[calc(100dvh-5.5rem)] max-w-7xl grid-cols-1 gap-4 px-3 py-4 md:grid-cols-[280px_1fr] md:px-6 text-white overflow-hidden items-stretch bg-[#020617]">
       {/* SIDE HISTORY LOG PANELS BAR */}
+
       <aside className="hidden h-full flex-col overflow-hidden rounded-2xl md:flex bg-[#000E2B]/50 backdrop-blur-md shrink-0 border border-white/8 shadow-2xl">
         <div className="p-4 border-b border-white/5">
           <button
@@ -205,6 +266,7 @@ function AdminChatPlayground() {
         <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1 layout-scroll-container mt-1">
           {sessions.map((s) => {
             const isActive = s.id === activeId;
+
             return (
               <div
                 key={s.id}
@@ -219,9 +281,11 @@ function AdminChatPlayground() {
                 <div className="flex-1 truncate text-left text-[13.5px]" title={s.title}>
                   {s.title || "Untitled Sandbox Track"}
                 </div>
+
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+
                     deleteConversation(s.id);
                   }}
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 shrink-0"
@@ -236,8 +300,10 @@ function AdminChatPlayground() {
         <div className="m-3 rounded-xl bg-white/5 border border-white/5 p-3 text-left space-y-1">
           <div className="flex items-center gap-1.5 text-xs font-bold text-[color:var(--gold)]">
             <Sparkles className="h-3.5 w-3.5" />
+
             <span>Admin Clearance Level</span>
           </div>
+
           <p className="text-[11px] text-slate-500 leading-relaxed">
             Direct telemetry access to the live multi-column ChromaDB embedding vector core.
           </p>
@@ -245,16 +311,19 @@ function AdminChatPlayground() {
       </aside>
 
       {/* CORE MATRIX PLAYGROUND PANEL INTERFACE */}
+
       <section className="flex h-full flex-col overflow-hidden rounded-2xl bg-[#001A4D]/20 backdrop-blur-md border border-white/8 shadow-2xl relative">
         <div className="flex items-center justify-between border-b border-white/5 px-6 py-4 bg-[#000A1F]/30 shrink-0">
           <div>
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] text-[color:var(--gold)]/80 font-bold mb-0.5">
               <Sparkles className="h-3 w-3" /> Ingestion Verification Gateway
             </div>
+
             <h1 className="font-display text-[15px] font-bold text-slate-100 truncate max-w-sm sm:max-w-lg">
               {active?.title || "New sandbox conversation"}
             </h1>
           </div>
+
           <span className="hidden text-[10px] font-mono text-slate-600 bg-white/5 border border-white/5 px-2 py-1 rounded-lg sm:block select-none">
             admin_session · {active?.id?.slice(0, 8)}
           </span>
@@ -268,6 +337,7 @@ function AdminChatPlayground() {
             {active?.messages.map((m) => (
               <MessageBubble key={m.id} msg={m} />
             ))}
+
             {thinking && <ThinkingBubble />}
           </div>
         </div>
@@ -289,6 +359,7 @@ function AdminChatPlayground() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
+
                     void send();
                   }
                 }}
@@ -318,7 +389,9 @@ function AdminChatPlayground() {
 }
 
 // ==============================================================================
+
 // 🛠️ SUB-RENDERING ENGINE SUB-SYSTEMS
+
 // ==============================================================================
 
 function StreamingMarkdownWrapper({ text, speed = 12 }: { text: string; speed?: number }) {
@@ -326,12 +399,15 @@ function StreamingMarkdownWrapper({ text, speed = 12 }: { text: string; speed?: 
 
   useEffect(() => {
     const wordTokens = text.split(" ");
+
     let currentWordIndex = 0;
+
     setDisplayedText("");
 
     const streamingTimer = setInterval(() => {
       if (currentWordIndex < wordTokens.length) {
         setDisplayedText((prev) => (prev ? prev + " " : "") + wordTokens[currentWordIndex]);
+
         currentWordIndex++;
       } else {
         clearInterval(streamingTimer);
@@ -360,6 +436,7 @@ function MarkdownRenderer({ text }: { text: string }) {
     <div className="space-y-2 text-left font-sans text-[14px] text-slate-200 leading-[1.75]">
       {text.split("\n").map((line, idx) => {
         const trimmed = line.trim();
+
         if (!trimmed) return <div key={idx} className="h-2" />;
 
         if (trimmed.startsWith("#### ")) {
@@ -380,6 +457,7 @@ function MarkdownRenderer({ text }: { text: string }) {
               className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-wider text-slate-100 mt-5 mb-3 border-b border-white/5 pb-2"
             >
               <Sparkles className="h-3.5 w-3.5 text-[color:var(--gold)] shrink-0" />
+
               {bold(trimmed.replace(/^###\s*/, ""))}
             </h3>
           );
@@ -397,6 +475,7 @@ function MarkdownRenderer({ text }: { text: string }) {
           return (
             <div key={idx} className="flex items-start gap-2.5 pl-7 my-1">
               <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-slate-500" />
+
               <p className="flex-1 text-[13px] text-slate-400 leading-relaxed">
                 {bold(trimmed.replace(/^[+\-*]\s*/, ""))}
               </p>
@@ -408,6 +487,7 @@ function MarkdownRenderer({ text }: { text: string }) {
           return (
             <div key={idx} className="flex items-start gap-3 pl-1 mt-2 mb-1">
               <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-sm bg-[color:var(--gold)]/70" />
+
               <div className="flex-1 font-medium text-slate-200 leading-relaxed">
                 {bold(trimmed.replace(/^[*\-]\s*/, ""))}
               </div>
@@ -434,6 +514,7 @@ function MessageBubble({ msg }: { msg: LiveChatMessage }) {
             {msg.content}
           </div>
         </div>
+
         <div className="h-8 w-8 rounded-full bg-[color:var(--gold)]/15 border border-[color:var(--gold)]/25 text-[color:var(--gold)] flex items-center justify-center shrink-0 shadow-sm">
           <User className="h-4 w-4" />
         </div>
@@ -451,6 +532,7 @@ function MessageBubble({ msg }: { msg: LiveChatMessage }) {
 
       <div className="flex flex-col gap-3 max-w-[85%] min-w-0">
         {/* Verification badge — above card, like student chat */}
+
         {msg.id !== "admin-welcome-bubble" && (
           <div className="flex items-center gap-1.5">
             {msg.context_verified ? (
@@ -466,6 +548,7 @@ function MessageBubble({ msg }: { msg: LiveChatMessage }) {
         )}
 
         {/* Message card */}
+
         <div className="rounded-2xl rounded-tl-sm border border-white/8 px-5 py-4 text-[14px] leading-relaxed text-slate-200 bg-[#0b1a40]/60 backdrop-blur-sm shadow-md w-full">
           {msg.id !== "admin-welcome-bubble" ? (
             <StreamingMarkdownWrapper text={msg.content} speed={10} />
@@ -475,11 +558,14 @@ function MessageBubble({ msg }: { msg: LiveChatMessage }) {
         </div>
 
         {/* Escalation notice */}
+
         {escalated && (
           <div className="flex items-start gap-3 rounded-xl border border-orange-500/20 bg-orange-500/8 px-4 py-3 text-[13px] text-orange-200 animate-fade-in">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+
             <div>
               <div className="font-semibold text-orange-300 mb-0.5">Escalated for Admin Review</div>
+
               <div className="text-orange-200/70 leading-relaxed text-[12px]">
                 Confidence threshold dipped. A support ticket has been auto-raised to the operator
                 queue.
@@ -500,13 +586,16 @@ function ThinkingBubble() {
       <div className="h-8 w-8 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
         <Loader2 className="h-4 w-4 animate-spin" />
       </div>
+
       <div className="rounded-2xl rounded-tl-sm border border-white/8 bg-[#0b1a40]/60 px-4 py-3 text-[13px] text-slate-500 flex items-center gap-3">
         <div className="flex gap-1">
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--gold)]/60" />
+
           <span
             className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--gold)]/60"
             style={{ animationDelay: "120ms" }}
           />
+
           <span
             className="h-1.5 w-1.5 animate-bounce rounded-full bg-[color:var(--gold)]/60"
             style={{ animationDelay: "240ms" }}
@@ -523,10 +612,13 @@ function SourcesAccordion({ sources }: { sources: any[] }) {
 
   const icon = (filename: string) => {
     const ext = filename.split(".").pop()?.toLowerCase() || "";
+
     if (["png", "jpg", "jpeg", "webp"].includes(ext))
       return <FileImage className="h-3.5 w-3.5 text-purple-400 shrink-0" />;
+
     if (["csv", "xlsx"].includes(ext))
       return <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400 shrink-0" />;
+
     return <FileText className="h-3.5 w-3.5 text-blue-400 shrink-0" />;
   };
 
@@ -544,6 +636,7 @@ function SourcesAccordion({ sources }: { sources: any[] }) {
             {sources.length}
           </span>
         </span>
+
         <ChevronDown
           className={`h-3.5 w-3.5 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
         />
@@ -556,10 +649,12 @@ function SourcesAccordion({ sources }: { sources: any[] }) {
           <ul className="space-y-2 border-t border-white/5 px-4 py-3 bg-black/20">
             {sources.map((src, i) => {
               const name = typeof src === "string" ? src : src.doc || "Document.pdf";
+
               const snippet =
                 typeof src === "string"
                   ? "Vector token chunk retrieved dynamically from institutional index tables."
                   : src.snippet || "";
+
               return (
                 <li
                   key={i}
@@ -567,8 +662,10 @@ function SourcesAccordion({ sources }: { sources: any[] }) {
                 >
                   <div className="flex items-center gap-2 mb-2 truncate" title={name}>
                     {icon(name)}
+
                     <span className="font-medium text-slate-300 truncate">{name}</span>
                   </div>
+
                   {snippet && (
                     <p className="text-[11px] text-slate-400 bg-black/20 p-2.5 rounded-lg border border-white/5 italic leading-relaxed">
                       "{snippet}"

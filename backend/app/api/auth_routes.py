@@ -24,6 +24,7 @@ from app.config import settings                           # 📁 Centralized con
 router = APIRouter(prefix="/auth", tags=["Unified Identity & Access Management"])
 
 # 💾 STATEFUL IN-MEMORY TRANSACTION LEDGER MATRIX
+# Tracks issued OTP codes with high-precision expiration timestamps server-side
 otp_transaction_ledger = {}
 
 # ==============================================================================
@@ -75,8 +76,8 @@ def load_env_file_manually() -> dict:
 def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
     """
     📧 Elite Enterprise Email Transportation Engine
-    👑 UPGRADED: Renders a premium, university-branded HTML interface incorporating
-    the absolute corporate logo asset with an instant double-click selection grid box.
+    👑 FIXED: Re-engineered image layout geometry to respect natural horizontal 
+    aspect ratios, ensuring beautiful, sharp asset rendering with zero distortion.
     """
     fallback_env = load_env_file_manually()
     
@@ -96,8 +97,8 @@ def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
     message["From"] = f"Amity University Jharkhand Support <{smtp_user}>"
     message["To"] = recipient_email
 
-    # 👑 BRANDED LOGO HOOK: Update the image src link below to your deployment CDN domain asset when going live!
-    logo_url = "https://raw.githubusercontent.com/NathCorp-Internship/assets/main/logo.png"
+    # 👑 HARDCODED CDN EMBLEM LINK: Points directly to your verified repository file path asset
+    logo_url = "https://raw.githubusercontent.com/NCTC-Internship-2026-Rita-s-Group/campus-helpdesk-assistant/main/frontend/public/logo.png"
 
     html_template = """<!DOCTYPE html>
 <html lang="en">
@@ -112,12 +113,14 @@ def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
       <td align="center" style="padding:0;">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#090f20; border:1px solid #1e293b; border-radius:16px; padding:48px 40px; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
 
+          <!-- Branded Crest Header Image Framework -->
           <tr>
             <td align="center" style="padding:0 0 32px 0;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td align="center" style="padding-bottom:16px;">
-                    <img src="LOGO_URL_PLACEHOLDER" alt="Amity University Logo" width="56" height="56" style="display:block; width:56px; height:56px; border:0; outline:none; text-decoration:none; filter: drop-shadow(0px 4px 10px rgba(0,0,0,0.3));">
+                  <!-- 👑 FIXED: Removed forced 1:1 squishing. Set proportional auto-height geometry. -->
+                  <td align="center" style="padding-bottom:20px;">
+                    <img src="LOGO_URL_PLACEHOLDER" alt="Amity University Logo" width="180" style="display:block; max-width:200px; width:100%; height:auto; border:0; outline:none; text-decoration:none;">
                   </td>
                 </tr>
                 <tr>
@@ -131,6 +134,7 @@ def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
             </td>
           </tr>
 
+          <!-- Title -->
           <tr>
             <td align="center" style="padding:0 0 20px 0;">
               <h1 style="margin:0; color:#ffffff; font-size:28px; font-weight:700; line-height:1.3; letter-spacing:-0.5px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -139,6 +143,7 @@ def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
             </td>
           </tr>
 
+          <!-- Body Copy -->
           <tr>
             <td align="center" style="padding:0 0 36px 0;">
               <p style="margin:0; color:#94a3b8; font-size:15px; line-height:1.65; max-width:460px;">
@@ -147,6 +152,7 @@ def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
             </td>
           </tr>
 
+          <!-- Code Card -->
           <tr>
             <td align="center" style="padding:0 0 16px 0;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#020617; border:1px solid #1e293b; border-radius:12px;">
@@ -164,6 +170,7 @@ def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
             </td>
           </tr>
 
+          <!-- Sub Helper -->
           <tr>
             <td align="center" style="padding:0 0 40px 0;">
               <p style="margin:0; color:#64748b; font-size:12px; font-style:italic; line-height:1.5;">
@@ -172,12 +179,14 @@ def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
             </td>
           </tr>
 
+          <!-- Divider -->
           <tr>
             <td style="padding:0 0 24px 0;">
               <hr style="border:none; border-top:1px solid #1e293b; margin:0; height:1px;">
             </td>
           </tr>
 
+          <!-- Footer -->
           <tr>
             <td align="center" style="padding:0;">
               <p style="margin:0 0 10px 0; color:#64748b; font-size:12px; line-height:1.6;">
@@ -191,6 +200,7 @@ def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
 
         </table>
 
+        <!-- Outer Footer -->
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; padding:24px 40px 0 40px;">
           <tr>
             <td align="center">
@@ -207,7 +217,7 @@ def dispatch_secure_otp_email(recipient_email: str, otp_code: str) -> bool:
 </body>
 </html>"""
 
-    # Dynamically inject logo path string and OTP variable values securely
+    # Replace formatting constraints systematically to avoid raw brace collision faults
     html_body = html_template.replace("LOGO_URL_PLACEHOLDER", logo_url).replace("123456", otp_code)
     message.attach(MIMEText(html_body, "html"))
 
@@ -401,7 +411,7 @@ async def administrative_credentials_login(
         custom_token_str = custom_token.decode("utf-8") if isinstance(custom_token, bytes) else custom_token
     except Exception as token_err:
         raise HTTPException(
-            status_code=settings.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Identity pipeline critical error: Failed to mint session context: {str(token_err)}"
         )
 

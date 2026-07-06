@@ -418,7 +418,7 @@ function AuthPage() {
                   : studentFlow === "forgot_verify"
                     ? "Secure Code Verification"
                     : studentFlow === "forgot_reset"
-                      ? "Establish New Password"
+                      ? "Reset Password"
                       : mode === "signin"
                         ? "Student Login"
                         : "Create Student Account"}
@@ -431,7 +431,7 @@ function AuthPage() {
                   : studentFlow === "forgot_verify"
                     ? "Type the high-security code dispatched to your inbox"
                     : studentFlow === "forgot_reset"
-                      ? "Enter your high-security credential configuration criteria"
+                      ? "Please enter your new security credentials below to restore account access."
                       : "Access your student helpdesk context panel"}
             </p>
           </div>
@@ -449,7 +449,7 @@ function AuthPage() {
                   placeholder="name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="h-11 border-white/10 bg-white/5 text-white focus-visible:ring-amber-500/50"
+                  className="h-11 border-white/10 bg-white/5 text-white focus-visible:ring-amber-400/50"
                   required
                 />
               </div>
@@ -539,7 +539,7 @@ function AuthPage() {
             >
               <div className="space-y-1.5">
                 <Label htmlFor="new-password-field" className="text-slate-300">
-                  New Password Criteria
+                  New Password
                 </Label>
                 <div className="relative">
                   <Input
@@ -567,7 +567,7 @@ function AuthPage() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="confirm-password-field" className="text-slate-300">
-                  Confirm Password Match
+                  Confirm New Password
                 </Label>
                 <div className="relative">
                   <Input
@@ -603,7 +603,7 @@ function AuthPage() {
                 ) : (
                   <KeyRound className="h-4 w-4" />
                 )}
-                Lock In New Password Pass
+                Update Password
               </Button>
             </form>
           )}
@@ -729,6 +729,7 @@ function AuthPage() {
                     className="h-11 border-white/10 bg-white/5 text-white pr-10 focus-visible:ring-amber-400/50 font-sans"
                     required
                   />
+                  {/* 👑 FIXED: onClick handler successfully bound to functional visibility toggler */}
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}

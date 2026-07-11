@@ -316,21 +316,13 @@ function AuthPage() {
 
       {/* Amity Header Top Banner Layout */}
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-[#030712]/60 border-b border-white/5 px-6 py-4 flex items-center justify-between shadow-sm">
+        {/* 👑 BRANDING REFACTOR: Replaced plain text nodes with an optimized relative image reference */}
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 p-0.5 font-bold text-slate-950 flex items-center justify-center tracking-wider text-sm shadow-md">
-            AU
-          </div>
-          <div className="text-left">
-            <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-              Amity University{" "}
-              <span className="text-[10px] text-amber-400 font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-400/10 border border-amber-400/20">
-                Jharkhand
-              </span>
-            </h1>
-            <p className="text-[11px] text-slate-400 font-medium">
-              Verified Institutional AI Knowledge Hub
-            </p>
-          </div>
+          <img
+            src="/logo.png"
+            alt="Amity University Jharkhand"
+            className="h-10 w-auto object-contain select-none filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
+          />
         </div>
 
         {role === "student" && studentFlow === "email_form" && (
@@ -729,7 +721,6 @@ function AuthPage() {
                     className="h-11 border-white/10 bg-white/5 text-white pr-10 focus-visible:ring-amber-400/50 font-sans"
                     required
                   />
-                  {/* 👑 FIXED: onClick handler successfully bound to functional visibility toggler */}
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}

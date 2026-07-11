@@ -11,6 +11,7 @@ python-multipart==0.0.9         # 📤 Essential binary multi-part compiler for 
 # ==============================================================================
 sqlalchemy==2.0.31
 asyncpg==0.29.0                 # 🔌 Asynchronous database engine driver for modern PostgreSQL connections
+aiosqlite==0.20.0               # 💾 👑 FIXED: Formal asynchronous driver for SQLite persistent storage loops
 
 # ==============================================================================
 # 🤖 AUTONOMOUS ORCHESTRATION & LLM INFERENCE CLIENTS
@@ -37,19 +38,3 @@ cryptography==42.0.5            # 🛡️ Underlying transport cryptography engi
 pydantic==2.9.2                 # 🏷️ High-speed parsing and state data models verification
 pydantic-settings==2.3.4        # ⚙️ Environment variables loader boundary management
 slowapi==0.1.9                  # 🛑 Global API route throttling engine to prevent endpoint abuse
-
-
-# 1. Clear any broken localized cache layers and spin up a fresh Python 3.10 virtual environment
-#Remove-Item -Recurse -Force .\venv -ErrorAction SilentlyContinue
-#python -m venv venv
-
-# 2. Fire up the isolated application runner track
-#.\venv\Scripts\Activate.ps1
-
-# 3. Synchronize package management engine and deploy the requirements array in one clean pass
-#python -m pip install --upgrade pip
-#pip install -r requirements.txt
-
-#uvicorn app.main:app --reload
-
-aiosqlite
